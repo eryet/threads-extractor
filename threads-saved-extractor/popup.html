@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body {
+      width: 280px;
+      margin: 0;
+      padding: 14px;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #101010;
+      color: #f3f3f3;
+    }
+    h1 { font-size: 14px; margin: 0 0 10px; font-weight: 600; }
+    .count { font-size: 28px; font-weight: 700; margin: 4px 0 2px; }
+    .status { font-size: 12px; color: #9a9a9a; min-height: 16px; margin-bottom: 10px; }
+    .status.error { color: #ff7b72; }
+    button {
+      width: 100%;
+      padding: 8px 10px;
+      margin: 3px 0;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #1c1c1c;
+      color: #f3f3f3;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover { background: #262626; }
+    button:disabled { opacity: 0.45; cursor: default; }
+    #btnStart { background: #f3f3f3; color: #101010; font-weight: 600; }
+    #btnStart:hover { background: #ddd; }
+    .row { display: flex; gap: 6px; }
+    .row button { flex: 1; }
+    .sep { border: none; border-top: 1px solid #2a2a2a; margin: 10px 0; }
+    #btnClear { color: #ff7b72; }
+  </style>
+</head>
+<body>
+  <h1>Threads Saved Extractor</h1>
+  <div class="count" id="count">0</div>
+  <div class="status" id="status">posts captured</div>
+
+  <button id="btnStart">Grab all saved</button>
+  <button id="btnStop" disabled>Stop</button>
+
+  <hr class="sep" />
+  <div class="row">
+    <button id="btnJson" disabled>JSON</button>
+    <button id="btnCsv" disabled>CSV</button>
+    <button id="btnMd" disabled>MD</button>
+  </div>
+  <button id="btnClear" disabled>Clear captured data</button>
+
+  <script src="lib/export.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

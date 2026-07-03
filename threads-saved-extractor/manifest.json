@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Threads Saved Posts Extractor",
+  "version": "0.1.0",
+  "description": "Personal tool: export your own saved (bookmarked) Threads posts as JSON / CSV / Markdown. Runs entirely locally.",
+  "minimum_chrome_version": "111",
+  "permissions": ["storage", "downloads"],
+  "host_permissions": [
+    "https://www.threads.com/*",
+    "https://threads.com/*"
+  ],
+  "background": { "service_worker": "sw.js" },
+  "action": { "default_popup": "popup.html", "default_title": "Threads Saved Extractor" },
+  "content_scripts": [
+    {
+      "matches": ["https://www.threads.com/*", "https://threads.com/*"],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.threads.com/*", "https://threads.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}
