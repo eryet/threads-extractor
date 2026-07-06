@@ -3,6 +3,8 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
+  const t = (k, subs) => TSEI18n.t(k, subs);
+  const terr = (s) => TSEI18n.translateError(s);
   const els = {
     liveDot: $('liveDot'),
     tabSaved: $('tabSaved'), tabFeeds: $('tabFeeds'), tabProfile: $('tabProfile'),
@@ -88,7 +90,7 @@
     const active = new Set(
       f.running ? (f.activeNames || (f.currentName ? [f.currentName] : [])) : []
     );
-    els.feedSelCount.textContent = selected.size ? `${selected.size} selected` : '';
+    els.feedSelCount.textContent = selected.size ? t('sel_count', { n: selected.size }) : '';
     els.feedPicker.querySelectorAll('.feedItem').forEach((row) => {
       const name = row.dataset.name;
       row.classList.toggle('sel', selected.has(row.dataset.url));
@@ -128,7 +130,7 @@
       if (selected.has(f.url)) selected.delete(f.url); else selected.add(f.url);
       saveSelection();
       row.classList.toggle('sel', selected.has(f.url));
-      els.feedSelCount.textContent = selected.size ? `${selected.size} selected` : '';
+      els.feedSelCount.textContent = selected.size ? t('sel_count', { n: selected.size }) : '';
       renderButtons();
     });
     return row;
@@ -142,8 +144,8 @@
       renderedListKey = key;
       els.feedPicker.textContent = '';
       const groups = [
-        { id: 'builtin', label: 'Built-in' },
-        { id: 'custom', label: 'Your custom feeds' },
+        { id: 'builtin', label: t('group_builtin') },
+        { id: 'custom', label: t('group_custom') },
       ];
       for (const g of groups) {
         const items = feeds.filter((f) => f.group === g.id);
@@ -209,22 +211,23 @@
     const profiles = p.profiles || {};
     const handles = Object.keys(profiles);
     if (p.running) {
-      const who = p.isOwn ? 'my' : `@${p.target}`;
-      setStatus(els.profStatus, `grabbing ${who} ${p.stage}… ${p.curCount || 0} so far`);
+      const who = p.isOwn ? t('who_my') : `@${p.target}`;
+      const stage = t(p.stage === 'replies' ? 'stage_replies' : 'stage_threads');
+      setStatus(els.profStatus, t('st_prof_grabbing', { who, stage, n: p.curCount || 0 }));
     } else if (p.lastError) {
-      setStatus(els.profStatus, p.lastError, true);
+      setStatus(els.profStatus, terr(p.lastError), true);
     } else if (hasProf) {
       if (handles.length === 1) {
         const b = profiles[handles[0]];
         const parts = [];
-        if (b.threads) parts.push(`${b.threads} threads`);
-        if (b.replies) parts.push(`${b.replies} replies`);
+        if (b.threads) parts.push(t('n_threads', { n: b.threads }));
+        if (b.replies) parts.push(t('n_replies', { n: b.replies }));
         setStatus(els.profStatus, `${handles[0]} — ${parts.join(' · ')}`);
       } else {
-        setStatus(els.profStatus, `${p.count} posts across ${handles.length} profiles`);
+        setStatus(els.profStatus, t('st_prof_multi', { count: p.count, n: handles.length }));
       }
     } else {
-      setStatus(els.profStatus, 'grab a profile — yours or anyone’s');
+      setStatus(els.profStatus, t('st_prof_ready'));
     }
 
     // ---- saved pane ----
@@ -236,13 +239,13 @@
     els.clear.disabled = !hasSaved || !!s.grabbing;
     els.savedBar.classList.toggle('on', !!s.grabbing);
     if (s.lastError) {
-      setStatus(els.status, s.lastError, true);
+      setStatus(els.status, terr(s.lastError), true);
     } else if (s.grabbing) {
-      setStatus(els.status, 'grabbing… scrolling the saved feed');
+      setStatus(els.status, t('st_grabbing_saved'));
     } else if (s.hasNext === false && hasSaved) {
-      setStatus(els.status, 'done — reached the end of the saved feed');
+      setStatus(els.status, t('st_saved_done'));
     } else {
-      setStatus(els.status, hasSaved ? 'posts captured' : 'ready');
+      setStatus(els.status, hasSaved ? t('st_posts_captured') : t('st_ready'));
     }
 
     // ---- feeds pane ----
@@ -260,21 +263,24 @@
       const overall = qLen ? Math.min(1, (f.count || 0) / (f.target * qLen)) : 0;
       els.feedBarFill.style.width = Math.round(overall * 100) + '%';
       setStatus(els.feedStatus, qLen
-        ? `board columns — ${f.doneCount || 0}/${qLen} feeds done · ${f.count || 0} posts`
-        : 'board columns — finding feed columns…');
+        ? t('st_columns_progress', { done: f.doneCount || 0, n: qLen, count: f.count || 0 })
+        : t('st_columns_finding'));
     } else if (f.running) {
       const qLen = (f.queue || []).length || 1;
       const inFeed = Math.min(1, (f.currentCount || 0) / (f.target || 1));
       const overall = Math.min(1, ((f.index || 0) + inFeed) / qLen);
       els.feedBarFill.style.width = Math.round(overall * 100) + '%';
-      setStatus(els.feedStatus, `feed ${(f.index || 0) + 1} of ${qLen} — ${f.currentName || '…'} · ${f.currentCount || 0}/${f.target}`);
+      setStatus(els.feedStatus, t('st_feed_progress', {
+        i: (f.index || 0) + 1, n: qLen, name: f.currentName || '…',
+        cur: f.currentCount || 0, target: f.target,
+      }));
     } else if (f.lastError) {
-      setStatus(els.feedStatus, f.lastError, true);
+      setStatus(els.feedStatus, terr(f.lastError), true);
     } else if (hasFeed) {
       const feedsDone = Object.keys(f.counts || {}).length;
-      setStatus(els.feedStatus, `done — ${f.count} posts from ${feedsDone} feed${feedsDone === 1 ? '' : 's'}`);
+      setStatus(els.feedStatus, t('st_feed_done', { count: f.count, n: feedsDone }));
     } else {
-      setStatus(els.feedStatus, 'select feeds, then run');
+      setStatus(els.feedStatus, t('st_select_feeds'));
     }
   }
 
@@ -288,7 +294,7 @@
   // ---- saved controls ----
   els.start.addEventListener('click', async () => {
     const r = await chrome.runtime.sendMessage({ type: 'START', mode: 'saved' });
-    if (r && !r.ok) setStatus(els.status, r.error || 'could not start', true);
+    if (r && !r.ok) setStatus(els.status, terr(r.error) || t('st_could_not_start'), true);
     refresh();
   });
   els.stop.addEventListener('click', async () => {
@@ -307,7 +313,7 @@
     saveSelection();
     const feeds = allFeeds(lastState).filter((f) => selected.has(f.url));
     const r = await chrome.runtime.sendMessage({ type: 'START_RUN', feeds, target });
-    if (r && !r.ok) setStatus(els.feedStatus, r.error || 'could not start', true);
+    if (r && !r.ok) setStatus(els.feedStatus, terr(r.error) || t('st_could_not_start'), true);
     refresh();
   });
   els.colsStart.addEventListener('click', async () => {
@@ -316,7 +322,7 @@
     saveSelection();
     const feeds = allFeeds(lastState).filter((f) => selected.has(f.url)).slice(0, 4);
     const r = await chrome.runtime.sendMessage({ type: 'START_COLUMNS', feeds, target });
-    if (r && !r.ok) setStatus(els.feedStatus, r.error || 'could not start', true);
+    if (r && !r.ok) setStatus(els.feedStatus, terr(r.error) || t('st_could_not_start'), true);
     refresh();
   });
   els.feedStop.addEventListener('click', async () => {
@@ -333,7 +339,7 @@
   async function startProfile(stage) {
     const handle = els.profHandle.value.trim().replace(/^@/, '');
     const r = await chrome.runtime.sendMessage({ type: 'START_PROFILE', stage, handle });
-    if (r && !r.ok) setStatus(els.profStatus, r.error || 'could not start', true);
+    if (r && !r.ok) setStatus(els.profStatus, terr(r.error) || t('st_could_not_start'), true);
     refresh();
   }
   els.profThreads.addEventListener('click', () => startProfile('threads'));
@@ -384,11 +390,20 @@
   els.profMd.addEventListener('click', async () =>
     download(TSEExport.toMarkdown(await getPosts('tse_profile_posts'), 'profile'), 'text/markdown', 'threads-profile', 'md'));
 
-  // restore last-used selection + target, then start polling
-  chrome.storage.local.get('tse_feed_prefs').then((got) => {
+  // ---- language ----
+  $('langSel').addEventListener('change', () => {
+    TSEI18n.setLang($('langSel').value).then(() => location.reload());
+  });
+
+  // resolve language, restore last-used selection + target, then poll
+  TSEI18n.init().then(() => {
+    TSEI18n.apply();
+    return chrome.storage.local.get(['tse_feed_prefs', 'tse_lang']);
+  }).then((got) => {
     const prefs = got.tse_feed_prefs || {};
     selected = new Set(prefs.selected || []);
     if (prefs.target) els.feedTarget.value = prefs.target;
+    $('langSel').value = got.tse_lang || 'auto';
   }).catch(() => {}).finally(() => {
     refresh();
     pollTimer = setInterval(refresh, 800);

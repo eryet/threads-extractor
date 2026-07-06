@@ -140,6 +140,35 @@
       color: var(--faint); font-size: 13px; pointer-events: none;
     }
     .topbar select { width: auto; }
+    .topbar { flex-wrap: wrap; }
+    .dateRange {
+      display: flex; align-items: center; gap: 4px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 0 6px;
+    }
+    .dateRange .sep { color: var(--faint); font-size: 12px; }
+    .dateRange input[type="date"] {
+      width: 118px;
+      padding: 7px 2px;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 12px;
+      font-family: inherit;
+    }
+    .dateRange input[type="date"]:focus { outline: none; }
+    .dateRange input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(0.7);
+      cursor: pointer;
+    }
+    .dateRange button {
+      border: 0; background: transparent;
+      color: var(--faint); font-size: 15px;
+      cursor: pointer; padding: 0 3px;
+    }
+    .dateRange button:hover { color: var(--danger); }
     .shown { margin-left: auto; font-size: 12px; color: var(--faint); white-space: nowrap; }
     .layoutToggle {
       display: flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; flex: none;
@@ -346,51 +375,60 @@
     <div class="brand">
       <div class="logo">@</div>
       <div>
-        <h1>Dashboard</h1>
+        <h1 data-i18n="dash_title">Dashboard</h1>
         <div class="sub" id="liveText">Threads Extractor</div>
       </div>
       <div class="dot" id="liveDot"></div>
     </div>
 
-    <div class="secHead">Source</div>
+    <div class="secHead" data-i18n="sec_source">Source</div>
     <div class="chipWrap" id="sourceNav"></div>
 
     <div id="feedFacet" hidden>
-      <div class="secHead">Feed <a id="feedFacetClear" hidden>clear</a></div>
+      <div class="secHead"><span data-i18n="sec_feed">Feed</span> <a id="feedFacetClear" data-i18n="link_clear" hidden>clear</a></div>
       <div class="chipWrap" id="feedChips"></div>
     </div>
 
     <div id="profFacet" hidden>
-      <div class="secHead">Profile <a id="profFacetClear" hidden>clear</a></div>
+      <div class="secHead"><span data-i18n="sec_profile">Profile</span> <a id="profFacetClear" data-i18n="link_clear" hidden>clear</a></div>
       <div class="chipWrap" id="profChips"></div>
       <div class="chipWrap" id="sectionChips" style="margin-top:4px"></div>
     </div>
 
     <div id="authorFacet" hidden>
-      <div class="secHead">Top authors <a id="authorFacetClear" hidden>clear</a></div>
+      <div class="secHead"><span data-i18n="sec_authors">Top authors</span> <a id="authorFacetClear" data-i18n="link_clear" hidden>clear</a></div>
       <div class="chipWrap" id="authorChips"></div>
     </div>
 
-    <div class="secHead">Export this view</div>
+    <div class="secHead" data-i18n="sec_export">Export this view</div>
     <div class="exportRow">
       <button id="expJson" disabled>JSON</button>
       <button id="expCsv" disabled>CSV</button>
       <button id="expMd" disabled>MD</button>
     </div>
-    <div class="sideNote">
+    <div class="sideNote" data-i18n="note_export">
       Exports exactly what the current filters show.
       Media URLs are signed by Meta's CDN and expire after a few days.
     </div>
 
-    <div class="secHead">Import</div>
+    <div class="secHead" data-i18n="sec_import">Import</div>
     <div class="exportRow">
-      <button id="impBtn">Import export JSON…</button>
+      <button id="impBtn" data-i18n="btn_import">Import export JSON…</button>
     </div>
     <input id="impFile" type="file" accept="application/json,.json" multiple hidden />
-    <div class="sideNote" id="impNote">
+    <div class="sideNote" id="impNote" data-i18n="note_import">
       Restore posts from earlier JSON exports (saved / feeds / profile —
       multiple files ok). Duplicates are skipped; imported feed posts survive
       future runs.
+    </div>
+
+    <div class="secHead" data-i18n="lang_label">Language</div>
+    <div class="exportRow">
+      <select id="langSel" style="flex:1">
+        <option value="auto">Auto</option>
+        <option value="en">English</option>
+        <option value="zh_TW">繁體中文</option>
+      </select>
     </div>
   </aside>
 
@@ -398,15 +436,21 @@
     <div class="topbar">
       <div class="searchBox">
         <span class="ico">⌕</span>
-        <input id="q" type="search" placeholder="Search text, @handle, name…  ( / )" autocomplete="off" spellcheck="false" />
+        <input id="q" type="search" data-i18n-placeholder="ph_search" placeholder="Search text, @handle, name…  ( / )" autocomplete="off" spellcheck="false" />
       </div>
       <select id="mediaSel">
-        <option value="all">All posts</option>
-        <option value="media">With media</option>
-        <option value="text">Text only</option>
+        <option value="all" data-i18n="opt_all_posts">All posts</option>
+        <option value="media" data-i18n="opt_with_media">With media</option>
+        <option value="text" data-i18n="opt_text_only">Text only</option>
       </select>
-      <select id="replySel" title="minimum reply count">
-        <option value="0">💬 any</option>
+      <div class="dateRange" data-i18n-title="title_date_range" title="posted between (takenAt)">
+        <input type="date" id="dateFrom" />
+        <span class="sep">–</span>
+        <input type="date" id="dateTo" />
+        <button id="dateClear" data-i18n-title="title_clear_dates" title="clear date range" hidden>×</button>
+      </div>
+      <select id="replySel" data-i18n-title="title_min_replies" title="minimum reply count">
+        <option value="0" data-i18n="opt_reply_any">💬 any</option>
         <option value="1">💬 ≥ 1</option>
         <option value="5">💬 ≥ 5</option>
         <option value="10">💬 ≥ 10</option>
@@ -414,22 +458,23 @@
         <option value="100">💬 ≥ 100</option>
       </select>
       <select id="sortSel">
-        <option value="capture">Capture order</option>
-        <option value="new">Newest posted</option>
-        <option value="old">Oldest posted</option>
-        <option value="likes">Most liked</option>
-        <option value="replies">Most replied</option>
+        <option value="capture" data-i18n="opt_sort_capture">Capture order</option>
+        <option value="new" data-i18n="opt_sort_new">Newest posted</option>
+        <option value="old" data-i18n="opt_sort_old">Oldest posted</option>
+        <option value="likes" data-i18n="opt_sort_likes">Most liked</option>
+        <option value="replies" data-i18n="opt_sort_replies">Most replied</option>
       </select>
       <div class="layoutToggle">
-        <button id="layGrid" class="active" title="Grid">▦</button>
-        <button id="layList" title="List">☰</button>
-        <button id="layCompact" title="Compact">≡</button>
+        <button id="layGrid" class="active" data-i18n-title="title_grid" title="Grid">▦</button>
+        <button id="layList" data-i18n-title="title_list" title="List">☰</button>
+        <button id="layCompact" data-i18n-title="title_compact" title="Compact">≡</button>
       </div>
       <span class="shown" id="shown"></span>
     </div>
     <div id="grid"></div>
   </main>
 
+  <script src="lib/i18n.js"></script>
   <script src="lib/export.js"></script>
   <script src="dashboard.js"></script>
 </body>

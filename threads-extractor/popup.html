@@ -277,110 +277,135 @@
 
     .pane { display: none; }
     .pane.active { display: block; }
+
+    .langRow {
+      display: flex; align-items: center; gap: 6px;
+      justify-content: flex-end;
+      margin-top: 10px;
+      font-size: 10.5px; color: var(--faint);
+    }
+    .langRow select {
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      background: var(--card);
+      color: var(--muted);
+      font-size: 10.5px;
+      padding: 3px 5px;
+    }
   </style>
 </head>
 <body>
   <div class="head">
     <div class="logo">@</div>
     <h1>Threads Extractor</h1>
-    <button class="dashBtn" id="btnDash" title="Browse everything captured so far">Dashboard ↗</button>
+    <button class="dashBtn" id="btnDash" data-i18n="btn_dashboard" title="Browse everything captured so far">Dashboard ↗</button>
     <div class="dot" id="liveDot"></div>
   </div>
 
   <div class="tabs">
-    <button id="tabSaved">Saved<span class="badge" id="badgeSaved">0</span></button>
-    <button id="tabFeeds">Feeds<span class="badge" id="badgeFeeds">0</span></button>
-    <button id="tabProfile">Profile<span class="badge" id="badgeProfile">0</span></button>
+    <button id="tabSaved"><span data-i18n="tab_saved">Saved</span><span class="badge" id="badgeSaved">0</span></button>
+    <button id="tabFeeds"><span data-i18n="tab_feeds">Feeds</span><span class="badge" id="badgeFeeds">0</span></button>
+    <button id="tabProfile"><span data-i18n="tab_profile">Profile</span><span class="badge" id="badgeProfile">0</span></button>
   </div>
 
   <!-- ================= SAVED ================= -->
   <div class="pane" id="paneSaved">
     <div class="stat">
       <div class="num" id="count">0</div>
-      <div class="lbl">saved posts captured</div>
+      <div class="lbl" data-i18n="lbl_saved_captured">saved posts captured</div>
       <div class="msg" id="status">ready</div>
       <div class="bar indet" id="savedBar"><div class="fill"></div></div>
     </div>
 
-    <button id="btnStart" class="act primary">Grab all saved</button>
-    <button id="btnStop" class="act stop" disabled>Stop</button>
+    <button id="btnStart" class="act primary" data-i18n="btn_grab_saved">Grab all saved</button>
+    <button id="btnStop" class="act stop" data-i18n="btn_stop" disabled>Stop</button>
 
-    <div class="exportHead">Export</div>
+    <div class="exportHead" data-i18n="head_export">Export</div>
     <div class="row">
       <button id="btnJson" class="act" disabled>JSON</button>
       <button id="btnCsv" class="act" disabled>CSV</button>
       <button id="btnMd" class="act" disabled>MD</button>
     </div>
-    <button id="btnClear" class="act ghost" disabled>Clear captured data</button>
+    <button id="btnClear" class="act ghost" data-i18n="btn_clear_saved" disabled>Clear captured data</button>
   </div>
 
   <!-- ================= FEEDS ================= -->
   <div class="pane" id="paneFeeds">
     <div class="stat">
       <div class="num" id="feedCount">0</div>
-      <div class="lbl">feed posts captured</div>
+      <div class="lbl" data-i18n="lbl_feed_captured">feed posts captured</div>
       <div class="msg" id="feedStatus">select feeds, then run</div>
       <div class="bar" id="feedBar"><div class="fill" id="feedBarFill"></div></div>
     </div>
 
     <div class="pickHead">
-      <span class="t">Feeds</span>
+      <span class="t" data-i18n="pick_feeds">Feeds</span>
       <span class="selcount" id="feedSelCount"></span>
       <span class="links">
-        <a id="selAll">all</a><span class="sepDot">·</span><a id="selNone">none</a>
+        <a id="selAll" data-i18n="link_all">all</a><span class="sepDot">·</span><a id="selNone" data-i18n="link_none">none</a>
       </span>
     </div>
     <div id="feedPicker"></div>
-    <div class="hint" id="feedHint" hidden>open any feed page once so your custom feeds show up here</div>
+    <div class="hint" id="feedHint" data-i18n="hint_custom_feeds" hidden>open any feed page once so your custom feeds show up here</div>
 
     <div class="targetRow">
-      <label for="feedTarget">Posts per feed</label>
+      <label for="feedTarget" data-i18n="lbl_target">Posts per feed</label>
       <input type="number" id="feedTarget" min="1" max="2000" step="1" value="100" />
     </div>
 
-    <button id="btnColsStart" class="act primary">Grab in batch · up to 4 at once</button>
-    <button id="btnFeedStart" class="act">Grab one by one</button>
-    <div class="hint">batch opens the selected feeds side by side and grabs them together (first 4 selected) · one by one visits each feed page in turn, any number — either way, keep the tab visible</div>
-    <button id="btnFeedStop" class="act stop" disabled>Stop run</button>
+    <button id="btnColsStart" class="act primary" data-i18n="btn_batch">Grab in batch · up to 4 at once</button>
+    <button id="btnFeedStart" class="act" data-i18n="btn_onebyone">Grab one by one</button>
+    <div class="hint" data-i18n="hint_batch">batch opens the selected feeds side by side and grabs them together (first 4 selected) · one by one visits each feed page in turn, any number — either way, keep the tab visible</div>
+    <button id="btnFeedStop" class="act stop" data-i18n="btn_stop_run" disabled>Stop run</button>
 
-    <div class="exportHead">Export</div>
+    <div class="exportHead" data-i18n="head_export">Export</div>
     <div class="row">
       <button id="btnFeedJson" class="act" disabled>JSON</button>
       <button id="btnFeedCsv" class="act" disabled>CSV</button>
       <button id="btnFeedMd" class="act" disabled>MD</button>
     </div>
-    <button id="btnFeedClear" class="act ghost" disabled>Clear feed data</button>
+    <button id="btnFeedClear" class="act ghost" data-i18n="btn_clear_feed" disabled>Clear feed data</button>
   </div>
 
   <!-- ================= PROFILE ================= -->
   <div class="pane" id="paneProfile">
     <div class="stat">
       <div class="num" id="profCount">0</div>
-      <div class="lbl" id="profLbl">profile posts captured</div>
+      <div class="lbl" id="profLbl" data-i18n="lbl_prof_captured">profile posts captured</div>
       <div class="msg" id="profStatus">grab your own threads</div>
       <div class="bar indet" id="profBar"><div class="fill"></div></div>
     </div>
 
     <div class="handleRow">
       <span class="at">@</span>
-      <input type="text" id="profHandle" placeholder="my profile (leave blank)" autocomplete="off" spellcheck="false" />
+      <input type="text" id="profHandle" data-i18n-placeholder="ph_handle" placeholder="my profile (leave blank)" autocomplete="off" spellcheck="false" />
     </div>
     <div class="row">
-      <button id="btnProfThreads" class="act primary">Grab threads</button>
-      <button id="btnProfReplies" class="act primary">Grab replies</button>
+      <button id="btnProfThreads" class="act primary" data-i18n="btn_grab_threads">Grab threads</button>
+      <button id="btnProfReplies" class="act primary" data-i18n="btn_grab_replies">Grab replies</button>
     </div>
-    <button id="btnProfStop" class="act stop" disabled>Stop</button>
-    <div class="hint">blank = your own profile · replies include the full post replied to</div>
+    <button id="btnProfStop" class="act stop" data-i18n="btn_stop" disabled>Stop</button>
+    <div class="hint" data-i18n="hint_profile">blank = your own profile · replies include the full post replied to</div>
 
-    <div class="exportHead">Export</div>
+    <div class="exportHead" data-i18n="head_export">Export</div>
     <div class="row">
       <button id="btnProfJson" class="act" disabled>JSON</button>
       <button id="btnProfCsv" class="act" disabled>CSV</button>
       <button id="btnProfMd" class="act" disabled>MD</button>
     </div>
-    <button id="btnProfClear" class="act ghost" disabled>Clear profile data</button>
+    <button id="btnProfClear" class="act ghost" data-i18n="btn_clear_prof" disabled>Clear profile data</button>
   </div>
 
+  <div class="langRow">
+    <span data-i18n="lang_label">Language</span>
+    <select id="langSel">
+      <option value="auto">Auto</option>
+      <option value="en">English</option>
+      <option value="zh_TW">繁體中文</option>
+    </select>
+  </div>
+
+  <script src="lib/i18n.js"></script>
   <script src="lib/export.js"></script>
   <script src="popup.js"></script>
 </body>

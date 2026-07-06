@@ -71,16 +71,12 @@
 
   // ---- on-page banner: signal that an autonomous grab owns this tab ----
   let banner = null;
+  TSEI18n.init(); // resolve language early; the banner shows well after injection
 
-  const BANNER_LABEL = {
-    saved: 'grabbing your saved posts',
-    feed: 'grabbing a feed',
-    profile: 'grabbing a profile',
-    columns: 'grabbing feeds in parallel',
-  };
+  const BANNER_KEYS = { saved: 'banner_saved', feed: 'banner_feed', profile: 'banner_profile', columns: 'banner_columns' };
 
   function showBanner(m) {
-    const label = BANNER_LABEL[m] || 'grabbing';
+    const label = TSEI18n.t(BANNER_KEYS[m] || 'banner_generic');
     if (banner) {
       banner.lastChild.textContent = bannerText(label);
       return;
@@ -104,7 +100,7 @@
       { duration: 1200, iterations: Infinity, easing: 'ease-in-out' }
     );
     const strong = document.createElement('b');
-    strong.textContent = 'Auto-grab running';
+    strong.textContent = TSEI18n.t('banner_running');
     strong.style.cssText = 'color:#3ddc84;font-weight:700;flex:none;';
     const text = document.createElement('span');
     text.textContent = bannerText(label);
@@ -114,7 +110,7 @@
   }
 
   function bannerText(label) {
-    return `${label} — don’t use this tab, keep it visible · stop anytime from the extension popup`;
+    return TSEI18n.t('banner_tail', { label });
   }
 
   function hideBanner() {

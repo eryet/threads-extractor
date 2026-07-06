@@ -5,26 +5,31 @@
   'use strict';
 
   const $ = (id) => document.getElementById(id);
+  const t = (k, subs) => TSEI18n.t(k, subs);
 
   let all = [];     // unified posts, each tagged with _source
   let view = [];    // filtered + sorted
 
   const state = {
-    source: 'all',   // all | saved | feed | profile
-    feed: null,      // feed name
-    handle: null,    // profile handle ('@x')
-    section: null,   // threads | replies
-    author: null,    // author handle ('@x')
+    source: 'all',           // all | saved | feed | profile (single: it's a scope)
+    // facet filters are multi-select: OR within a facet, AND across facets;
+    // an empty set means "no filter"
+    feeds: new Set(),        // feed names
+    handles: new Set(),      // profile handles ('@x')
+    sections: new Set(),     // 'threads' | 'replies'
+    authors: new Set(),      // author handles ('@x')
     media: 'all',    // all | media | text
     minReplies: 0,
+    dateFrom: '',    // YYYY-MM-DD, on takenAt
+    dateTo: '',
     q: '',
     sort: 'capture',
   };
 
   const SRC = {
-    saved: { label: 'Saved', order: 0 },
-    feed: { label: 'Feeds', order: 1 },
-    profile: { label: 'Profiles', order: 2 },
+    saved: { labelKey: 'nav_saved', order: 0 },
+    feed: { labelKey: 'nav_feeds', order: 1 },
+    profile: { labelKey: 'nav_profiles', order: 2 },
   };
 
   // ---- data ----
@@ -46,12 +51,12 @@
     const busy = !!s.grabbing || !!f.running || !!p.running;
     $('liveDot').classList.toggle('live', busy);
     $('liveText').textContent = f.running
-      ? `grabbing feeds… (${(f.queue || []).length ? (f.index || 0) + 1 + '/' + f.queue.length : '…'})`
+      ? t('live_feeds', { p: (f.queue || []).length ? (f.index || 0) + 1 + '/' + f.queue.length : '…' })
       : p.running
-        ? `grabbing @${p.target || '?'} ${p.stage || ''}…`
+        ? t('live_profile', { h: p.target || '?', stage: t(p.stage === 'replies' ? 'stage_replies' : 'stage_threads') })
         : s.grabbing
-          ? 'grabbing saved posts…'
-          : 'Threads Extractor';
+          ? t('live_saved')
+          : t('live_idle');
   }
 
   // ---- filtering + sorting ----
@@ -76,9 +81,9 @@
 
   function inScope(p) { // source + facet filters, not search/media/author
     if (state.source !== 'all' && p._source !== state.source) return false;
-    if (state.feed && p.feed !== state.feed) return false;
-    if (state.handle && p.profileHandle !== state.handle) return false;
-    if (state.section && p.section !== state.section) return false;
+    if (state.feeds.size && !state.feeds.has(p.feed)) return false;
+    if (state.handles.size && !state.handles.has(p.profileHandle)) return false;
+    if (state.sections.size && !state.sections.has(p.section)) return false;
     return true;
   }
 
@@ -89,10 +94,16 @@
     unknownReplyHidden = 0;
     view = all.filter((p) => {
       if (!inScope(p)) return false;
-      if (state.author && !(p.author && p.author.handle === state.author)) return false;
+      if (state.authors.size && !(p.author && state.authors.has(p.author.handle))) return false;
       const hasMedia = p.media && p.media.length;
       if (state.media === 'media' && !hasMedia) return false;
       if (state.media === 'text' && hasMedia) return false;
+      if (state.dateFrom || state.dateTo) {
+        const d = (p.takenAt || '').slice(0, 10); // ISO dates compare as strings
+        if (!d) return false;
+        if (state.dateFrom && d < state.dateFrom) return false;
+        if (state.dateTo && d > state.dateTo) return false;
+      }
       if (q) {
         const hay = [
           p.text || '',
@@ -152,13 +163,13 @@
     nav.textContent = '';
     const counts = { saved: 0, feed: 0, profile: 0 };
     for (const p of all) counts[p._source]++;
-    const rows = [['all', 'All posts', all.length]]
-      .concat(Object.keys(SRC).map((k) => [k, SRC[k].label, counts[k]]));
+    const rows = [['all', t('nav_all'), all.length]]
+      .concat(Object.keys(SRC).map((k) => [k, t(SRC[k].labelKey), counts[k]]));
     for (const [key, label, n] of rows) {
       nav.appendChild(chip(label, n, state.source === key, () => {
         state.source = key;
         // facets tied to another source no longer apply
-        state.feed = null; state.handle = null; state.section = null;
+        state.feeds.clear(); state.handles.clear(); state.sections.clear();
         update();
       }));
     }
@@ -171,13 +182,13 @@
       const box = $('feedChips');
       box.textContent = '';
       for (const [name, n] of tally(feedPosts, (p) => p.feed)) {
-        box.appendChild(chip(name, n, state.feed === name, () => {
-          state.feed = state.feed === name ? null : name;
+        box.appendChild(chip(name, n, state.feeds.has(name), () => {
+          if (state.feeds.has(name)) state.feeds.delete(name); else state.feeds.add(name);
           update();
         }));
       }
-      $('feedFacetClear').hidden = !state.feed;
-      $('feedFacetClear').onclick = () => { state.feed = null; update(); };
+      $('feedFacetClear').hidden = !state.feeds.size;
+      $('feedFacetClear').onclick = () => { state.feeds.clear(); update(); };
     }
 
     // profile facet
@@ -188,46 +199,48 @@
       const box = $('profChips');
       box.textContent = '';
       for (const [h, n] of tally(profPosts, (p) => p.profileHandle)) {
-        box.appendChild(chip(h, n, state.handle === h, () => {
-          state.handle = state.handle === h ? null : h;
+        box.appendChild(chip(h, n, state.handles.has(h), () => {
+          if (state.handles.has(h)) state.handles.delete(h); else state.handles.add(h);
           update();
         }));
       }
-      const inHandle = state.handle
-        ? profPosts.filter((p) => p.profileHandle === state.handle) : profPosts;
+      const inHandle = state.handles.size
+        ? profPosts.filter((p) => state.handles.has(p.profileHandle)) : profPosts;
       const sbox = $('sectionChips');
       sbox.textContent = '';
       for (const sec of ['threads', 'replies']) {
         const n = inHandle.filter((p) => p.section === sec).length;
         if (!n) continue;
-        sbox.appendChild(chip(sec === 'replies' ? 'Replies' : 'Threads', n, state.section === sec, () => {
-          state.section = state.section === sec ? null : sec;
+        sbox.appendChild(chip(t(sec === 'replies' ? 'chip_replies' : 'chip_threads'), n, state.sections.has(sec), () => {
+          if (state.sections.has(sec)) state.sections.delete(sec); else state.sections.add(sec);
           update();
         }));
       }
-      $('profFacetClear').hidden = !state.handle && !state.section;
-      $('profFacetClear').onclick = () => { state.handle = null; state.section = null; update(); };
+      $('profFacetClear').hidden = !state.handles.size && !state.sections.size;
+      $('profFacetClear').onclick = () => { state.handles.clear(); state.sections.clear(); update(); };
     }
 
     // top authors (within the current scope, ignoring the author filter itself)
     const scoped = all.filter(inScope);
     const authors = tally(scoped, (p) => p.author && p.author.handle).slice(0, 12);
-    const showAuthors = authors.length > 1 || state.author;
+    const showAuthors = authors.length > 1 || state.authors.size;
     $('authorFacet').hidden = !showAuthors;
     if (showAuthors) {
       const box = $('authorChips');
       box.textContent = '';
-      if (state.author && !authors.some(([h]) => h === state.author)) {
-        authors.unshift([state.author, scoped.filter((p) => p.author && p.author.handle === state.author).length]);
+      for (const sel of state.authors) {
+        if (!authors.some(([h]) => h === sel)) {
+          authors.unshift([sel, scoped.filter((p) => p.author && p.author.handle === sel).length]);
+        }
       }
       for (const [h, n] of authors) {
-        box.appendChild(chip(h, n, state.author === h, () => {
-          state.author = state.author === h ? null : h;
+        box.appendChild(chip(h, n, state.authors.has(h), () => {
+          if (state.authors.has(h)) state.authors.delete(h); else state.authors.add(h);
           update();
         }));
       }
-      $('authorFacetClear').hidden = !state.author;
-      $('authorFacetClear').onclick = () => { state.author = null; update(); };
+      $('authorFacetClear').hidden = !state.authors.size;
+      $('authorFacetClear').onclick = () => { state.authors.clear(); update(); };
     }
   }
 
@@ -246,13 +259,13 @@
       // show a placeholder that jumps to the post instead
       const ph = document.createElement('div');
       ph.className = 'mediaVideo';
-      ph.title = 'video — open the post on Threads';
+      ph.title = t('title_video_tile');
       const play = document.createElement('span');
       play.className = 'play';
       play.textContent = '▶';
       const lbl = document.createElement('span');
       lbl.className = 'lbl';
-      lbl.textContent = 'video · open post';
+      lbl.textContent = t('video_tile');
       ph.append(play, lbl);
       if (postUrl) ph.addEventListener('click', () => window.open(postUrl, '_blank'));
       return ph;
@@ -265,7 +278,7 @@
     el.addEventListener('error', () => {
       const dead = document.createElement('div');
       dead.className = 'mediaDead';
-      dead.textContent = 'media expired';
+      dead.textContent = t('media_expired');
       el.replaceWith(dead);
     }, { once: true });
     return el;
@@ -295,8 +308,8 @@
   // fresh layout per card, which was the main source of scroll jank.
   let clampQueue = [];
   let clampScheduled = false;
-  function queueClampCheck(t) {
-    clampQueue.push(t);
+  function queueClampCheck(txtEl) { // NB: not "t" — that's the i18n helper
+    clampQueue.push(txtEl);
     if (clampScheduled) return;
     clampScheduled = true;
     requestAnimationFrame(() => {
@@ -318,10 +331,10 @@
       for (const el of cut) { // writes
         const more = document.createElement('span');
         more.className = 'more';
-        more.textContent = 'more';
+        more.textContent = t('more');
         more.addEventListener('click', () => {
           const open = el.classList.toggle('clamp');
-          more.textContent = open ? 'more' : 'less';
+          more.textContent = t(open ? 'more' : 'less');
           scheduleMeasure(true); // card height changed — keep the virtual layout honest
         });
         el.after(more);
@@ -343,8 +356,8 @@
     const b = document.createElement('span');
     b.className = 'badge ' + p._source;
     b.textContent = p._source === 'feed' ? (p.feed || 'feed')
-      : p._source === 'profile' ? (p.section === 'replies' ? 'reply' : 'thread')
-        : 'saved';
+      : p._source === 'profile' ? t(p.section === 'replies' ? 'badge_reply' : 'badge_thread')
+        : t('badge_saved');
     b.title = p._source === 'profile' ? `${p.profileHandle || ''} · ${p.section}` : b.textContent;
     return b;
   }
@@ -372,9 +385,10 @@
     const handle = document.createElement('span');
     handle.className = 'handle';
     handle.textContent = (p.author && p.author.handle) || '@unknown';
-    handle.title = 'filter by this author';
+    handle.title = t('title_filter_author');
     handle.addEventListener('click', () => {
-      state.author = state.author === handle.textContent ? null : handle.textContent;
+      const h = handle.textContent;
+      if (state.authors.has(h)) state.authors.delete(h); else state.authors.add(h);
       update();
     });
     hd.appendChild(handle);
@@ -402,7 +416,7 @@
       a.href = p.url;
       a.target = '_blank';
       a.rel = 'noreferrer';
-      a.textContent = 'open ↗';
+      a.textContent = t('open_post');
       meta.appendChild(a);
     }
     c.appendChild(meta);
@@ -414,7 +428,7 @@
       qhd.className = 'qhd';
       const who = document.createElement('b');
       who.textContent = (p.replyTo.author && p.replyTo.author.handle) || '@unknown';
-      qhd.append('↩ replying to ', who);
+      qhd.append(t('replying_to'), who);
       if (p.replyTo.takenAt) qhd.append(' · ' + p.replyTo.takenAt.slice(0, 10));
       if (p.replyTo.url) {
         qhd.append(' · ');
@@ -422,7 +436,7 @@
         a.href = p.replyTo.url;
         a.target = '_blank';
         a.rel = 'noreferrer';
-        a.textContent = 'open ↗';
+        a.textContent = t('open_post');
         qhd.appendChild(a);
       }
       q.appendChild(qhd);
@@ -616,17 +630,15 @@
     if (!view.length) {
       const e = document.createElement('div');
       e.className = 'empty';
-      e.innerHTML = all.length
-        ? 'Nothing matches the current filters.'
-        : 'Nothing captured yet.<br /><b>Grab</b> saved posts, feeds, or a profile from the extension popup — results show up here live.';
+      e.innerHTML = all.length ? t('empty_no_match') : t('empty_no_capture');
       grid.appendChild(e);
     } else {
       layout();
     }
-    const parts = [`${view.length.toLocaleString()} post${view.length === 1 ? '' : 's'}`];
-    if (view.length !== all.length) parts.push(`of ${all.length.toLocaleString()}`);
+    const parts = [t('shown_posts', { n: view.length.toLocaleString() })];
+    if (view.length !== all.length) parts.push(t('shown_of', { n: all.length.toLocaleString() }));
     if (unknownReplyHidden) {
-      parts.push(`· ${unknownReplyHidden.toLocaleString()} hidden (no reply data — captured before v0.8.6, re-grab)`);
+      parts.push(t('shown_hidden_replies', { n: unknownReplyHidden.toLocaleString() }));
     }
     $('shown').textContent = parts.join(' ');
     const has = view.length > 0;
@@ -687,12 +699,10 @@
     }
     posts = posts.filter((p) => p && typeof p === 'object' && p.id);
     if (!posts.length) {
-      $('impNote').textContent = badFiles
-        ? 'could not read those files — expected JSON exports from this extension'
-        : 'no posts found in the selected file(s)';
+      $('impNote').textContent = badFiles ? t('imp_unreadable') : t('imp_none');
       return;
     }
-    $('impNote').textContent = `importing ${posts.length.toLocaleString()} posts…`;
+    $('impNote').textContent = t('imp_importing', { n: posts.length.toLocaleString() });
     let added = 0, skipped = 0;
     for (let i = 0; i < posts.length; i += 1000) {
       const r = await chrome.runtime.sendMessage({
@@ -701,9 +711,9 @@
       if (r && r.ok) { added += r.added; skipped += r.skipped; }
     }
     $('impNote').textContent =
-      `imported ${added.toLocaleString()} posts` +
-      (skipped ? ` · ${skipped.toLocaleString()} duplicates skipped` : '') +
-      (badFiles ? ` · ${badFiles} unreadable file(s)` : '');
+      t('imp_done', { n: added.toLocaleString() }) +
+      (skipped ? t('imp_dupes', { n: skipped.toLocaleString() }) : '') +
+      (badFiles ? t('imp_badfiles', { n: badFiles }) : '');
     await loadPosts();
     update(true);
   });
@@ -724,6 +734,19 @@
   });
   $('mediaSel').addEventListener('change', () => { state.media = $('mediaSel').value; update(); });
   $('replySel').addEventListener('change', () => { state.minReplies = parseInt($('replySel').value, 10) || 0; update(); });
+  function onDateChange() {
+    state.dateFrom = $('dateFrom').value;
+    state.dateTo = $('dateTo').value;
+    $('dateClear').hidden = !state.dateFrom && !state.dateTo;
+    update();
+  }
+  $('dateFrom').addEventListener('change', onDateChange);
+  $('dateTo').addEventListener('change', onDateChange);
+  $('dateClear').addEventListener('click', () => {
+    $('dateFrom').value = '';
+    $('dateTo').value = '';
+    onDateChange();
+  });
   $('sortSel').addEventListener('change', () => { state.sort = $('sortSel').value; update(); });
   $('layGrid').addEventListener('click', () => setLayout('grid'));
   $('layList').addEventListener('click', () => setLayout('list'));
@@ -753,9 +776,21 @@
     }
   });
 
+  // ---- language ----
+
+  $('langSel').addEventListener('change', () => {
+    TSEI18n.setLang($('langSel').value).then(() => location.reload());
+  });
+
   // ---- init ----
 
   (async () => {
+    await TSEI18n.init();
+    TSEI18n.apply();
+    try {
+      const got = await chrome.storage.local.get('tse_lang');
+      $('langSel').value = got.tse_lang || 'auto';
+    } catch (_) {}
     try { setLayout(localStorage.getItem('tse_dash_layout') || 'grid'); } catch (_) {}
     await Promise.all([loadPosts(), loadLive()]);
     update();
