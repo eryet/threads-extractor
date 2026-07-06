@@ -121,6 +121,14 @@ function parallelDone(st) {
     .map((f) => f.url);
 }
 
+// wipe live-captured feed posts but keep imported ones (their keys are
+// prefixed "import:") — imports are restored backups, not run snapshots
+function clearLiveFeedPosts(store) {
+  for (const k of Object.keys(store.feedPosts)) {
+    if (!k.startsWith('import:')) delete store.feedPosts[k];
+  }
+}
+
 async function findThreadsTab() {
   const tabs = await chrome.tabs.query({ url: ['https://www.threads.com/*', 'https://threads.com/*'] });
   if (!tabs.length) return null;
@@ -564,8 +572,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: false, error: store.feedState.lastError });
           break;
         }
-        // Each run starts from a clean slate: "give me the top N of these feeds now."
-        store.feedPosts = {};
+        // Each run starts from a clean slate: "give me the top N of these
+        // feeds now." Imported posts (import: keys) are backups — keep them.
+        clearLiveFeedPosts(store);
         store.feedState = Object.assign({}, FEED_STATE_DEFAULTS, {
           running: true,
           queue: feeds,
@@ -599,7 +608,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         // clean slate, like sequential runs; the content script opens columns
         // for these feeds and reconciles the queue via COLUMNS_INFO
-        store.feedPosts = {};
+        clearLiveFeedPosts(store);
         store.feedState = Object.assign({}, FEED_STATE_DEFAULTS, {
           running: true,
           parallel: true,
@@ -766,6 +775,33 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         }
         sendResponse({ ok: true });
         break;
+
+      case 'IMPORT_POSTS': {
+        // posts from an earlier JSON export, routed by shape. Runs through
+        // the SW so the in-memory mirror stays consistent with storage.
+        const posts = Array.isArray(msg.posts) ? msg.posts : [];
+        let added = 0, skipped = 0;
+        for (const p of posts) {
+          if (!p || !p.id || typeof p !== 'object') { skipped++; continue; }
+          if (p.profileHandle) {
+            const key = String(p.profileHandle).replace(/^@/, '') + '|' +
+              (p.section === 'replies' ? 'replies' : 'threads') + '|' + p.id;
+            if (store.profilePosts[key]) { skipped++; continue; }
+            store.profilePosts[key] = p;
+          } else if (p.feed) {
+            const key = 'import:' + p.feed + '|' + p.id;
+            if (store.feedPosts[key]) { skipped++; continue; }
+            store.feedPosts[key] = p;
+          } else {
+            if (store.posts[p.id]) { skipped++; continue; }
+            store.posts[p.id] = p;
+          }
+          added++;
+        }
+        if (added) await persist();
+        sendResponse({ ok: true, added, skipped });
+        break;
+      }
 
       case 'CLEAR':
         if (msg.mode === 'feed') {

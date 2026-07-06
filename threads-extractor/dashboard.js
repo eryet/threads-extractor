@@ -588,14 +588,22 @@
   }, { passive: true });
 
   let lastWidth = 0;
+  let resizeQueued = false;
   new ResizeObserver((entries) => {
     const w = entries[entries.length - 1].contentRect.width;
     if (w === lastWidth) return; // our own padding changes also fire the RO
     lastWidth = w;
-    readCols();
-    rowHeights = []; // card heights depend on column width
-    winStart = winEnd = -1;
-    layout();
+    if (resizeQueued) return;
+    resizeQueued = true;
+    // defer: mutating layout inside the RO callback re-triggers it in the
+    // same frame ("ResizeObserver loop completed with undelivered notifications")
+    requestAnimationFrame(() => {
+      resizeQueued = false;
+      readCols();
+      rowHeights = []; // card heights depend on column width
+      winStart = winEnd = -1;
+      layout();
+    });
   }).observe(grid);
 
   function renderAll() {
@@ -653,6 +661,52 @@
   $('expJson').addEventListener('click', () => download(TSEExport.toJSON(view), 'application/json', 'json'));
   $('expCsv').addEventListener('click', () => download(TSEExport.toCSV(view, exportKind()), 'text/csv', 'csv'));
   $('expMd').addEventListener('click', () => download(TSEExport.toMarkdown(view, exportKind()), 'text/markdown', 'md'));
+
+  // ---- import: restore posts from earlier JSON exports ----
+
+  $('impBtn').addEventListener('click', () => $('impFile').click());
+  $('impFile').addEventListener('change', async () => {
+    const files = [...$('impFile').files];
+    $('impFile').value = '';
+    if (!files.length) return;
+    let posts = [];
+    let badFiles = 0;
+    for (const f of files) {
+      try {
+        const j = JSON.parse(await f.text());
+        if (Array.isArray(j)) {
+          posts = posts.concat(j);
+        } else if (j && typeof j === 'object') {
+          // tolerate raw storage dumps: {tse_posts: {id: post, …}, …}
+          for (const v of Object.values(j)) {
+            if (Array.isArray(v)) posts = posts.concat(v);
+            else if (v && typeof v === 'object') posts = posts.concat(Object.values(v));
+          }
+        }
+      } catch (_) { badFiles++; }
+    }
+    posts = posts.filter((p) => p && typeof p === 'object' && p.id);
+    if (!posts.length) {
+      $('impNote').textContent = badFiles
+        ? 'could not read those files — expected JSON exports from this extension'
+        : 'no posts found in the selected file(s)';
+      return;
+    }
+    $('impNote').textContent = `importing ${posts.length.toLocaleString()} posts…`;
+    let added = 0, skipped = 0;
+    for (let i = 0; i < posts.length; i += 1000) {
+      const r = await chrome.runtime.sendMessage({
+        type: 'IMPORT_POSTS', posts: posts.slice(i, i + 1000),
+      }).catch(() => null);
+      if (r && r.ok) { added += r.added; skipped += r.skipped; }
+    }
+    $('impNote').textContent =
+      `imported ${added.toLocaleString()} posts` +
+      (skipped ? ` · ${skipped.toLocaleString()} duplicates skipped` : '') +
+      (badFiles ? ` · ${badFiles} unreadable file(s)` : '');
+    await loadPosts();
+    update(true);
+  });
 
   // ---- controls ----
 

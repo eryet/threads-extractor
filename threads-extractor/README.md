@@ -106,15 +106,20 @@ captured post — saved, feeds, and profiles together. It reads the extension's
 storage directly (no export needed) and updates live while a grab is running.
 
 - **Filter** by source, feed, profile / section, or author (click any author
-  chip or a card's @handle); combine with full-text search (`/` focuses it)
-  and a with-media / text-only toggle.
-- **Sort** by capture order (default — same order as exports), post date, or
-  likes. Grid and list layouts.
+  chip or a card's @handle); combine with full-text search (`/` focuses it),
+  a with-media / text-only toggle, and a minimum reply-count filter.
+- **Sort** by capture order (default — same order as exports), post date,
+  likes, or replies. Grid, list, and compact (reddit-style) layouts.
 - **Export this view**: the JSON / CSV / MD buttons export exactly what the
   current filters show, so the dashboard doubles as an export query builder.
+- **Import**: load earlier JSON exports back in (multiple files ok) — exports
+  double as backups. Duplicates are skipped, and imported feed posts survive
+  future runs (which otherwise start from a clean slate).
 
-Media are shown from Meta's signed CDN URLs, so thumbnails only render while
-the URLs are still valid (a few days); expired ones collapse to a placeholder.
+Media are shown from Meta's signed CDN URLs, so image thumbnails only render
+while the URLs are still valid (a few days); expired ones collapse to a
+placeholder. Videos don't play outside Threads' own player, so they render as
+a ▶ tile that opens the post.
 
 ## How it works
 

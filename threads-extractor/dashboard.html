@@ -381,6 +381,17 @@
       Exports exactly what the current filters show.
       Media URLs are signed by Meta's CDN and expire after a few days.
     </div>
+
+    <div class="secHead">Import</div>
+    <div class="exportRow">
+      <button id="impBtn">Import export JSON…</button>
+    </div>
+    <input id="impFile" type="file" accept="application/json,.json" multiple hidden />
+    <div class="sideNote" id="impNote">
+      Restore posts from earlier JSON exports (saved / feeds / profile —
+      multiple files ok). Duplicates are skipped; imported feed posts survive
+      future runs.
+    </div>
   </aside>
 
   <main id="scroller">
