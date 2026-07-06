@@ -18,7 +18,7 @@
     feedBar: $('feedBar'), feedBarFill: $('feedBarFill'),
     feedPicker: $('feedPicker'), feedHint: $('feedHint'), feedTarget: $('feedTarget'),
     selAll: $('selAll'), selNone: $('selNone'),
-    feedStart: $('btnFeedStart'), feedStop: $('btnFeedStop'),
+    feedStart: $('btnFeedStart'), colsStart: $('btnColsStart'), feedStop: $('btnFeedStop'),
     feedJson: $('btnFeedJson'), feedCsv: $('btnFeedCsv'), feedMd: $('btnFeedMd'),
     feedClear: $('btnFeedClear'),
     feedSelCount: $('feedSelCount'),
@@ -53,6 +53,11 @@
     els.paneProfile.classList.toggle('active', which === 'profile');
     try { localStorage.setItem('tse_tab', which); } catch (_) {}
   }
+  $('btnDash').addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
+    window.close();
+  });
+
   els.tabSaved.addEventListener('click', () => showTab('saved'));
   els.tabFeeds.addEventListener('click', () => showTab('feeds'));
   els.tabProfile.addEventListener('click', () => showTab('profile'));
@@ -80,20 +85,24 @@
   function refreshRows(state) {
     const f = state.feed || {};
     const counts = f.counts || {};
-    const activeName = f.running ? f.currentName : null;
+    const active = new Set(
+      f.running ? (f.activeNames || (f.currentName ? [f.currentName] : [])) : []
+    );
     els.feedSelCount.textContent = selected.size ? `${selected.size} selected` : '';
     els.feedPicker.querySelectorAll('.feedItem').forEach((row) => {
       const name = row.dataset.name;
       row.classList.toggle('sel', selected.has(row.dataset.url));
-      const isActive = name === activeName;
+      const isActive = active.has(name);
       row.classList.toggle('active', isActive);
       const n = counts[name];
       const cnt = row.querySelector('.fcount');
       const spin = row.querySelector('.spinner');
-      // show a spinner on the feed currently being grabbed, else its count
+      // spinner on every feed being grabbed right now, count always visible
+      // so parallel runs show all four climbing at once (0 until the first
+      // batch, so the spinner never floats without its pill)
       spin.style.display = isActive ? '' : 'none';
-      cnt.style.display = isActive ? 'none' : '';
-      cnt.textContent = n != null ? n : '';
+      cnt.style.display = '';
+      cnt.textContent = n != null ? String(n) : (isActive ? '0' : '');
     });
   }
 
@@ -165,6 +174,7 @@
     const p = (lastState && lastState.profile) || {};
     const busy = !!f.running || !!s.grabbing || !!p.running;
     els.feedStart.disabled = busy || selected.size === 0;
+    els.colsStart.disabled = busy || selected.size === 0;
   }
 
   function render(state) {
@@ -245,7 +255,14 @@
     els.feedClear.disabled = !hasFeed || !!f.running;
 
     els.feedBar.classList.toggle('on', !!f.running);
-    if (f.running) {
+    if (f.running && f.parallel) {
+      const qLen = (f.queue || []).length;
+      const overall = qLen ? Math.min(1, (f.count || 0) / (f.target * qLen)) : 0;
+      els.feedBarFill.style.width = Math.round(overall * 100) + '%';
+      setStatus(els.feedStatus, qLen
+        ? `board columns — ${f.doneCount || 0}/${qLen} feeds done · ${f.count || 0} posts`
+        : 'board columns — finding feed columns…');
+    } else if (f.running) {
       const qLen = (f.queue || []).length || 1;
       const inFeed = Math.min(1, (f.currentCount || 0) / (f.target || 1));
       const overall = Math.min(1, ((f.index || 0) + inFeed) / qLen);
@@ -290,6 +307,15 @@
     saveSelection();
     const feeds = allFeeds(lastState).filter((f) => selected.has(f.url));
     const r = await chrome.runtime.sendMessage({ type: 'START_RUN', feeds, target });
+    if (r && !r.ok) setStatus(els.feedStatus, r.error || 'could not start', true);
+    refresh();
+  });
+  els.colsStart.addEventListener('click', async () => {
+    const target = Math.max(1, Math.min(2000, parseInt(els.feedTarget.value, 10) || 100));
+    els.feedTarget.value = target;
+    saveSelection();
+    const feeds = allFeeds(lastState).filter((f) => selected.has(f.url)).slice(0, 4);
+    const r = await chrome.runtime.sendMessage({ type: 'START_COLUMNS', feeds, target });
     if (r && !r.ok) setStatus(els.feedStatus, r.error || 'could not start', true);
     refresh();
   });

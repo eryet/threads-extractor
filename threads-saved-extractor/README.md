@@ -48,6 +48,28 @@ only from the tab driving it — normal browsing is never hoovered up. A post
 appearing in two selected feeds is kept once per feed, so per-feed rankings
 stay complete.
 
+#### Board columns (parallel, max 4)
+
+**Grab selected in columns** uses the board home (`/`) instead of navigating
+feed→feed: it opens each selected feed as a board column (first 4 of the
+selection — hard-capped in code), scrolls all of them at the same time, and
+removes the columns it added when the run ends, so 4 feeds take roughly as
+long as 1. Feeds you already had pinned as columns are reused and left alone.
+
+The add/remove automation drives Threads' own "Add a column" → Feeds →
+&lt;name&gt; and column "More" → "Remove column" menus with synthesized pointer
+events (verified live), so it depends on the **English UI strings** — if your
+Threads UI language isn't English, pin the columns manually and the run will
+use them. If a run is interrupted mid-way (tab closed / navigated), columns
+it added may stay pinned; remove them by hand.
+
+Because columns interleave their responses in one tab, each captured batch is
+attributed to its feed via the GraphQL request variables (`variant` for
+built-ins, `interest_feed_id` for custom feeds) rather than by page URL — see
+the discovery table. Everything else matches sequential runs: same clean
+slate, same `feed`/`feedOrder` fields, same exports, same watchdog. Keep the
+tab visible; hidden tabs pause all columns at once.
+
 ### Profiles (yours or anyone's · threads + replies)
 
 1. In the popup's **Profile** tab, optionally type a **@handle** (leave it
@@ -71,6 +93,23 @@ This reads other users' **public** posts through your own logged-in session,
 one profile at a time, with the same deliberately throttled scrolling — a
 private account you don't follow simply returns nothing. Keep it personal and
 low-volume.
+
+### Dashboard (browse everything captured)
+
+Click **Dashboard ↗** in the popup header to open a full-page view of every
+captured post — saved, feeds, and profiles together. It reads the extension's
+storage directly (no export needed) and updates live while a grab is running.
+
+- **Filter** by source, feed, profile / section, or author (click any author
+  chip or a card's @handle); combine with full-text search (`/` focuses it)
+  and a with-media / text-only toggle.
+- **Sort** by capture order (default — same order as exports), post date, or
+  likes. Grid and list layouts.
+- **Export this view**: the JSON / CSV / MD buttons export exactly what the
+  current filters show, so the dashboard doubles as an export query builder.
+
+Media are shown from Meta's signed CDN URLs, so thumbnails only render while
+the URLs are still valid (a few days); expired ones collapse to a placeholder.
 
 ## How it works
 
@@ -115,6 +154,8 @@ threads.com tab
 | Custom-feed list | embedded on single-column pages: `data.custom_feeds.interest_feeds[] = {feed_name, id}` → page `/custom_feed/<id>/` |
 | Profile (Threads + Replies tabs) | `/@user` and `/@user/replies` both use connection key `mediaData`, node = thread with `thread_items[].post`; Replies threads interleave parent posts by others (filtered by username) |
 | Own username | the only bare `/@x` link inside the sidebar `[role="navigation"]` |
+| Board columns (2026-07-06) | pinned-column list embedded as `…text_app_default_board_new.columns.edges[].node.uri` (`/for_you`, `/custom_feed/<id>`, …), same order as the `[data-column-scrollable]` DOM elements |
+| Feed attribution | request `variables.variant` (`for_you` / `following` / …) for built-ins, `variables.interest_feed_id` (posts) / `custom_feed_id` (metadata) for custom feeds; embedded first batches join their `{"adp_<label>","queryID":…,"variables":{…}}` registration via the shared `adp_` label |
 
 ### About order fields
 

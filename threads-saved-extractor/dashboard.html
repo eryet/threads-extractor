@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Threads Extractor — Dashboard</title>
+  <style>
+    :root {
+      --bg: #101010;
+      --card: #181818;
+      --card2: #1e1e1e;
+      --border: #2c2c2c;
+      --text: #f3f3f3;
+      --muted: #9a9a9a;
+      --faint: #6c6c6c;
+      --accent: #f3f3f3;
+      --danger: #ff7b72;
+      --ok: #3ddc84;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      display: flex;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+    }
+    ::-webkit-scrollbar { width: 10px; }
+    ::-webkit-scrollbar-thumb { background: #303030; border-radius: 99px; }
+    a { color: inherit; }
+
+    /* ================= sidebar ================= */
+    aside {
+      width: 264px; flex: none;
+      height: 100%;
+      overflow-y: auto;
+      border-right: 1px solid var(--border);
+      padding: 16px 14px 20px;
+    }
+    .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 16px; }
+    .logo {
+      width: 28px; height: 28px; border-radius: 9px;
+      background: var(--text); color: var(--bg);
+      display: grid; place-items: center;
+      font-weight: 800; font-size: 16px;
+    }
+    .brand h1 { font-size: 14px; font-weight: 650; margin: 0; }
+    .brand .sub { font-size: 10.5px; color: var(--faint); margin-top: 1px; }
+    .dot {
+      margin-left: auto;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #3a3a3a; flex: none;
+    }
+    .dot.live { background: var(--ok); animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.35; } }
+
+    .secHead {
+      font-size: 10.5px; font-weight: 650; color: var(--faint);
+      text-transform: uppercase; letter-spacing: 0.07em;
+      margin: 16px 4px 6px;
+      display: flex; align-items: baseline;
+    }
+    .secHead a { margin-left: auto; font-size: 10.5px; color: var(--faint); text-decoration: none; cursor: pointer; text-transform: none; letter-spacing: 0; }
+    .secHead a:hover { color: var(--text); }
+
+    .navItem, .chip {
+      display: flex; align-items: center; gap: 8px;
+      width: 100%;
+      padding: 7px 9px;
+      border: 1px solid transparent;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      cursor: pointer;
+      text-align: left;
+    }
+    .navItem:hover, .chip:hover { background: var(--card); color: var(--text); }
+    .navItem.active, .chip.active {
+      background: rgba(243, 243, 243, 0.08);
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .navItem .n, .chip .n {
+      margin-left: auto; flex: none;
+      font-size: 10.5px; font-weight: 600;
+      color: var(--muted);
+      background: #2a2a2a;
+      border-radius: 99px;
+      padding: 1px 7px;
+    }
+    .navItem .n:empty, .chip .n:empty { display: none; }
+    .chip .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chipWrap { display: flex; flex-direction: column; gap: 1px; }
+
+    select, .searchBox input {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 12.5px;
+    }
+    select:focus { outline: 1px solid #4a4a4a; }
+
+    .exportRow { display: flex; gap: 6px; }
+    .exportRow button {
+      flex: 1;
+      padding: 8px 0;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 12.5px; font-weight: 550;
+      cursor: pointer;
+    }
+    .exportRow button:hover { background: var(--card2); }
+    .exportRow button:disabled { opacity: 0.4; cursor: default; }
+    .sideNote { font-size: 10.5px; color: var(--faint); margin: 8px 4px 0; line-height: 1.5; }
+
+    /* ================= main ================= */
+    /* overflow-anchor off: the virtual list adjusts padding while scrolling,
+       and browser scroll anchoring would fight those adjustments */
+    main { flex: 1; height: 100%; overflow-y: auto; overflow-anchor: none; }
+    .topbar {
+      position: sticky; top: 0; z-index: 5;
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 18px;
+      background: rgba(16, 16, 16, 0.92);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid var(--border);
+    }
+    .searchBox { flex: 1; max-width: 440px; position: relative; }
+    .searchBox input { padding-left: 30px; }
+    .searchBox input:focus { outline: 1px solid #4a4a4a; }
+    .searchBox .ico {
+      position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+      color: var(--faint); font-size: 13px; pointer-events: none;
+    }
+    .topbar select { width: auto; }
+    .shown { margin-left: auto; font-size: 12px; color: var(--faint); white-space: nowrap; }
+    .layoutToggle {
+      display: flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; flex: none;
+    }
+    .layoutToggle button {
+      padding: 7px 11px; border: 0; background: var(--card);
+      color: var(--faint); font-size: 12.5px; cursor: pointer;
+    }
+    .layoutToggle button.active { background: var(--card2); color: var(--text); }
+
+    /* ================= cards ================= */
+    #grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+      gap: 14px;
+      padding: 16px 18px 60px;
+      align-items: start;
+    }
+    #grid.list {
+      grid-template-columns: 1fr;
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    /* ---- compact: dense reddit-style rows ---- */
+    #grid.compact {
+      grid-template-columns: 1fr;
+      max-width: 900px;
+      margin: 0 auto;
+      gap: 6px;
+    }
+    #grid.compact .card {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      grid-template-areas: "media hd" "media txt" "media meta";
+      column-gap: 12px;
+      row-gap: 2px;
+      padding: 9px 12px;
+      contain-intrinsic-size: auto 90px;
+    }
+    #grid.compact .card:not(:has(.mediaWrap)) {
+      grid-template-columns: 1fr;
+      grid-template-areas: "hd" "txt" "meta";
+    }
+    #grid.compact .card .hd { grid-area: hd; }
+    #grid.compact .card .meta { grid-area: meta; margin-top: 0; }
+    #grid.compact .card .txt {
+      grid-area: txt;
+      margin-top: 0;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    #grid.compact .card .txt:empty { display: none; }
+    #grid.compact .card .quote,
+    #grid.compact .card .more { display: none; }
+    #grid.compact .card .mediaWrap {
+      grid-area: media;
+      margin-top: 0;
+      width: 56px;
+      align-self: start;
+      grid-template-columns: 1fr;
+      gap: 0;
+    }
+    #grid.compact .card .mediaWrap > *:not(:first-child) { display: none; }
+    #grid.compact .card .mediaWrap img,
+    #grid.compact .card .mediaVideo,
+    #grid.compact .card .mediaDead {
+      width: 56px;
+      height: 56px;
+      max-height: 56px;
+    }
+    #grid.compact .mediaVideo { gap: 0; }
+    #grid.compact .mediaVideo .lbl { display: none; }
+    #grid.compact .mediaVideo .play {
+      width: 24px; height: 24px;
+      font-size: 10px;
+      padding-left: 2px;
+    }
+    #grid.compact .mediaMore::after { font-size: 10px; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 13px;
+      padding: 13px 14px 11px;
+      font-size: 13px;
+      line-height: 1.5;
+      overflow: hidden;
+      /* isolate each card's layout/paint so inserting one row while
+         scrolling doesn't invalidate its neighbours, and let the browser
+         skip rendering cards outside the viewport proximity entirely */
+      contain: content;
+      content-visibility: auto;
+      contain-intrinsic-size: auto 340px;
+    }
+    .card .hd { display: flex; align-items: baseline; gap: 7px; }
+    .card .handle { font-weight: 650; cursor: pointer; white-space: nowrap; }
+    .card .handle:hover { text-decoration: underline; }
+    .card .name { color: var(--faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .badge {
+      margin-left: auto; flex: none;
+      font-size: 10px; font-weight: 650;
+      text-transform: uppercase; letter-spacing: 0.05em;
+      color: var(--muted);
+      background: #262626;
+      border-radius: 99px;
+      padding: 2px 8px;
+      max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .badge.saved { color: #9ecbff; background: rgba(88, 166, 255, 0.13); }
+    .badge.feed { color: #bff3d4; background: rgba(61, 220, 132, 0.13); }
+    .badge.profile { color: #ffd699; background: rgba(255, 178, 74, 0.13); }
+    .card .meta { color: var(--faint); font-size: 11.5px; margin-top: 2px; }
+    .card .meta a { color: var(--faint); text-decoration: none; }
+    .card .meta a:hover { color: var(--text); }
+
+    .card .txt { margin-top: 8px; white-space: pre-wrap; word-wrap: break-word; }
+    .card .txt.clamp {
+      display: -webkit-box;
+      -webkit-line-clamp: 7;
+      line-clamp: 7;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .card .more {
+      display: inline-block; margin-top: 3px;
+      font-size: 11.5px; color: var(--faint); cursor: pointer;
+    }
+    .card .more:hover { color: var(--text); }
+
+    .quote {
+      margin-top: 8px;
+      border-left: 2px solid #3a3a3a;
+      padding: 2px 0 2px 10px;
+      color: var(--muted);
+      font-size: 12.5px;
+    }
+    .quote .qhd { font-size: 11.5px; color: var(--faint); margin-bottom: 2px; }
+    .quote .qhd b { color: var(--muted); }
+    .quote .txt { margin-top: 0; }
+
+    .mediaWrap {
+      display: grid; gap: 5px; margin-top: 9px;
+      grid-template-columns: 1fr 1fr;
+      border-radius: 9px; overflow: hidden;
+    }
+    .mediaWrap.single { grid-template-columns: 1fr; }
+    .mediaWrap img, .mediaWrap video {
+      width: 100%; height: 170px; object-fit: cover;
+      background: #0c0c0c; border-radius: 6px;
+      display: block; cursor: pointer;
+    }
+    .mediaWrap.single img, .mediaWrap.single video { height: 280px; }
+    .mediaDead {
+      height: 60px; border-radius: 6px;
+      background: #141414; border: 1px dashed #2c2c2c;
+      display: grid; place-items: center;
+      color: var(--faint); font-size: 11px;
+    }
+    .mediaVideo {
+      height: 170px; border-radius: 6px;
+      background: linear-gradient(135deg, #141414, #0c0c0c);
+      border: 1px solid #262626;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 7px;
+      cursor: pointer;
+      color: var(--muted);
+    }
+    .mediaWrap.single .mediaVideo { height: 280px; }
+    .mediaVideo:hover { border-color: #4a4a4a; color: var(--text); }
+    .mediaVideo .play {
+      width: 40px; height: 40px; border-radius: 50%;
+      background: rgba(243, 243, 243, 0.1);
+      border: 1.5px solid #3a3a3a;
+      display: grid; place-items: center;
+      font-size: 15px; padding-left: 3px;
+    }
+    .mediaVideo .lbl { font-size: 11px; }
+    .mediaMore { position: relative; }
+    .mediaMore::after {
+      content: attr(data-more);
+      position: absolute; inset: 0;
+      display: grid; place-items: center;
+      background: rgba(0, 0, 0, 0.55);
+      color: var(--text); font-weight: 700; font-size: 15px;
+      border-radius: 6px;
+    }
+
+    .empty {
+      grid-column: 1 / -1;
+      text-align: center;
+      color: var(--faint);
+      padding: 80px 20px;
+      font-size: 13.5px;
+      line-height: 1.7;
+    }
+    .empty b { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <aside>
+    <div class="brand">
+      <div class="logo">@</div>
+      <div>
+        <h1>Dashboard</h1>
+        <div class="sub" id="liveText">Threads Extractor</div>
+      </div>
+      <div class="dot" id="liveDot"></div>
+    </div>
+
+    <div class="secHead">Source</div>
+    <div class="chipWrap" id="sourceNav"></div>
+
+    <div id="feedFacet" hidden>
+      <div class="secHead">Feed <a id="feedFacetClear" hidden>clear</a></div>
+      <div class="chipWrap" id="feedChips"></div>
+    </div>
+
+    <div id="profFacet" hidden>
+      <div class="secHead">Profile <a id="profFacetClear" hidden>clear</a></div>
+      <div class="chipWrap" id="profChips"></div>
+      <div class="chipWrap" id="sectionChips" style="margin-top:4px"></div>
+    </div>
+
+    <div id="authorFacet" hidden>
+      <div class="secHead">Top authors <a id="authorFacetClear" hidden>clear</a></div>
+      <div class="chipWrap" id="authorChips"></div>
+    </div>
+
+    <div class="secHead">Export this view</div>
+    <div class="exportRow">
+      <button id="expJson" disabled>JSON</button>
+      <button id="expCsv" disabled>CSV</button>
+      <button id="expMd" disabled>MD</button>
+    </div>
+    <div class="sideNote">
+      Exports exactly what the current filters show.
+      Media URLs are signed by Meta's CDN and expire after a few days.
+    </div>
+  </aside>
+
+  <main id="scroller">
+    <div class="topbar">
+      <div class="searchBox">
+        <span class="ico">⌕</span>
+        <input id="q" type="search" placeholder="Search text, @handle, name…  ( / )" autocomplete="off" spellcheck="false" />
+      </div>
+      <select id="mediaSel">
+        <option value="all">All posts</option>
+        <option value="media">With media</option>
+        <option value="text">Text only</option>
+      </select>
+      <select id="replySel" title="minimum reply count">
+        <option value="0">💬 any</option>
+        <option value="1">💬 ≥ 1</option>
+        <option value="5">💬 ≥ 5</option>
+        <option value="10">💬 ≥ 10</option>
+        <option value="50">💬 ≥ 50</option>
+        <option value="100">💬 ≥ 100</option>
+      </select>
+      <select id="sortSel">
+        <option value="capture">Capture order</option>
+        <option value="new">Newest posted</option>
+        <option value="old">Oldest posted</option>
+        <option value="likes">Most liked</option>
+        <option value="replies">Most replied</option>
+      </select>
+      <div class="layoutToggle">
+        <button id="layGrid" class="active" title="Grid">▦</button>
+        <button id="layList" title="List">☰</button>
+        <button id="layCompact" title="Compact">≡</button>
+      </div>
+      <span class="shown" id="shown"></span>
+    </div>
+    <div id="grid"></div>
+  </main>
+
+  <script src="lib/export.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

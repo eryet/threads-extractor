@@ -15,13 +15,16 @@ const STALL_MS = 60000;      // no progress for this long => skip to next feed
 
 const FEED_STATE_DEFAULTS = {
   running: false,
+  parallel: false,           // false: navigate feed→feed; true: board columns run
   queue: [],                 // [{name, url}] snapshot taken at run start
-  index: 0,                  // current position in queue
+  index: 0,                  // current position in queue (sequential runs)
   target: 100,               // posts per feed
   counts: {},                // feed name -> captured count
+  feedEnded: {},             // parallel: feed url -> has_next_page === false seen
+  orderCounters: {},         // parallel: feed url -> per-feed order counter
   awaitingNav: false,        // navigated, waiting for CONTENT_READY on the new page
   tabId: null,               // tab the run drives (persisted: survives SW restarts)
-  orderCounter: 0,           // per-feed, reset on advance
+  orderCounter: 0,           // per-feed, reset on advance (sequential runs)
   hasNext: null,
   lastProgressAt: null,      // watchdog heartbeat (nav / batches)
   lastBatchAt: null,
@@ -53,7 +56,9 @@ async function getStore() {
       posts: got.tse_posts || {},
       state: Object.assign({ grabbing: false, hasNext: null, lastBatchAt: null, lastError: null, orderCounter: 0 }, got.tse_state),
       feedPosts: got.tse_feed_posts || {},
-      feedState: Object.assign({}, FEED_STATE_DEFAULTS, got.tse_feed_state),
+      // fresh object fields so persisted pre-parallel states never share (and
+      // mutate) the DEFAULTS references
+      feedState: Object.assign({}, FEED_STATE_DEFAULTS, { feedEnded: {}, orderCounters: {} }, got.tse_feed_state),
       feedList: got.tse_feed_list || { feeds: [], at: null },
       profilePosts: got.tse_profile_posts || {},
       profileState: Object.assign({}, PROFILE_STATE_DEFAULTS, got.tse_profile_state),
@@ -80,6 +85,40 @@ function normPath(p) {
 
 function currentFeed(st) {
   return st.queue[st.index] || null;
+}
+
+const BUILTIN_FEED_NAMES = {
+  '/for_you/': 'For you',
+  '/following/': 'Following',
+  '/ghost_posts/': 'Ghost posts',
+};
+
+function resolveFeedName(store, url) {
+  if (BUILTIN_FEED_NAMES[url]) return BUILTIN_FEED_NAMES[url];
+  const m = url.match(/^\/custom_feed\/([^/]+)\//);
+  if (m) {
+    const f = (store.feedList.feeds || []).find((x) => String(x.id) === m[1]);
+    return f ? f.name : 'Custom feed ' + m[1];
+  }
+  return url;
+}
+
+// multi-item threads arrive with the parent chained on the raw node — keep
+// the full replied-to post on the normalized record (all capture modes)
+function attachReplyTo(p, raw, now) {
+  if (!raw || !raw.__tsePrevPost) return;
+  const parent = self.TSENormalize.normalizePost(raw.__tsePrevPost, now);
+  if (parent) {
+    delete parent.savedAt; // meaningless on a reply parent
+    p.replyTo = parent;
+  }
+}
+
+// parallel runs: feeds that hit their target or ran out of posts
+function parallelDone(st) {
+  return st.queue
+    .filter((f) => (st.counts[f.name] || 0) >= st.target || st.feedEnded[f.url])
+    .map((f) => f.url);
 }
 
 async function findThreadsTab() {
@@ -186,6 +225,7 @@ async function handleSavedBatch(msg) {
       // Capture order is therefore the best available proxy: 1 = saved most
       // recently. Accurate for a clean top-to-bottom grab (Clear -> Grab).
       p.savedOrder = ++store.state.orderCounter;
+      attachReplyTo(p, raw, now);
       store.posts[p.id] = p;
       added++;
     }
@@ -196,6 +236,44 @@ async function handleSavedBatch(msg) {
   store.state.lastBatchAt = now;
   if (added || msg.pageInfo) await persist();
   return { added, count: Object.keys(store.posts).length };
+}
+
+// Board-columns run: several feeds paginate at once in the same tab, so
+// attribution comes from msg.feedUrl (derived from the request variables by
+// inject.js) instead of "the feed we navigated to".
+async function handleColumnsBatch(store, msg) {
+  const st = store.feedState;
+  const total = () => Object.keys(store.feedPosts).length;
+  const url = msg.feedUrl ? normPath(msg.feedUrl) + '/' : null;
+  const feed = url && st.queue.find((f) => f.url === url);
+  if (!feed) return { added: 0, count: total(), doneFeeds: parallelDone(st) };
+
+  const now = new Date().toISOString();
+  let added = 0;
+  for (const raw of msg.posts || []) {
+    if ((st.counts[feed.name] || 0) >= st.target) break;
+    const p = self.TSENormalize.normalizePost(raw, now);
+    if (!p) continue;
+    const key = feed.url + '|' + p.id;
+    if (store.feedPosts[key]) continue;
+    p.feed = feed.name;
+    p.feedIndex = st.queue.indexOf(feed);
+    p.feedOrder = (st.orderCounters[feed.url] = (st.orderCounters[feed.url] || 0) + 1);
+    attachReplyTo(p, raw, now);
+    store.feedPosts[key] = p;
+    st.counts[feed.name] = (st.counts[feed.name] || 0) + 1;
+    added++;
+  }
+  if (msg.pageInfo && msg.pageInfo.has_next_page === false) st.feedEnded[feed.url] = true;
+  st.lastBatchAt = now;
+  touchProgress(st);
+  const doneFeeds = parallelDone(st);
+  if (st.queue.length && doneFeeds.length >= st.queue.length) {
+    await finishRun(store);
+  } else {
+    await persist();
+  }
+  return { added, count: total(), doneFeeds };
 }
 
 async function handleFeedBatch(msg, sender) {
@@ -209,6 +287,7 @@ async function handleFeedBatch(msg, sender) {
   if (sender && sender.tab && st.tabId != null && sender.tab.id !== st.tabId) {
     return { added: 0, count: total() };
   }
+  if (st.parallel) return handleColumnsBatch(store, msg);
   const feed = currentFeed(st);
   if (!feed) return { added: 0, count: total() };
 
@@ -223,6 +302,7 @@ async function handleFeedBatch(msg, sender) {
     p.feed = feed.name;
     p.feedIndex = st.index;              // preserves run order in exports
     p.feedOrder = ++st.orderCounter;     // 1 = top of this feed at grab time
+    attachReplyTo(p, raw, now);
     store.feedPosts[key] = p;
     st.counts[feed.name] = (st.counts[feed.name] || 0) + 1;
     added++;
@@ -270,14 +350,7 @@ async function handleProfileBatch(msg, sender) {
     p.section = st.stage;                        // 'threads' | 'replies'
     p.sectionIndex = st.stage === 'replies' ? 1 : 0;
     p.profileOrder = ++st.orderCounter;          // 1 = newest in this section
-    if (raw.__tsePrevPost) {
-      // the full post this one replies to, normalized like any other post
-      const parent = self.TSENormalize.normalizePost(raw.__tsePrevPost, now);
-      if (parent) {
-        delete parent.savedAt; // meaningless on a reply parent
-        p.replyTo = parent;
-      }
-    }
+    attachReplyTo(p, raw, now);
     store.profilePosts[key] = p;
     st.curCount++;
     added++;
@@ -303,6 +376,18 @@ async function handleContentReady(msg, sender) {
 
   // multi-feed run: is this the page we were navigating to?
   if (st.running && tabId === st.tabId) {
+    if (st.parallel) {
+      // columns run: we were navigating to the board home
+      if (normPath(msg.path) === '/') {
+        st.awaitingNav = false;
+        touchProgress(st);
+        await persist();
+        chrome.tabs.sendMessage(tabId, {
+          type: 'START_SCROLL', mode: 'columns', feeds: st.queue,
+        }).catch(() => {});
+      }
+      return;
+    }
     const feed = currentFeed(st);
     if (feed && normPath(msg.path) === normPath(feed.url)) {
       st.awaitingNav = false;
@@ -337,10 +422,16 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (st.running) {
     const last = Date.parse(st.lastProgressAt || '') || 0;
     if (Date.now() - last > STALL_MS) {
-      // Feed (or tab) stalled — skip to the next one instead of hanging forever.
-      const feed = currentFeed(st);
-      if (feed) st.lastError = `"${feed.name}" stalled — skipped`;
-      await advanceFeed(store);
+      if (st.parallel) {
+        // columns all paginate at once — a stall means the whole run is stuck
+        st.lastError = 'columns run stalled — stopped (keep the tab visible)';
+        await finishRun(store);
+      } else {
+        // Feed (or tab) stalled — skip to the next one instead of hanging forever.
+        const feed = currentFeed(st);
+        if (feed) st.lastError = `"${feed.name}" stalled — skipped`;
+        await advanceFeed(store);
+      }
     }
   }
   if (ps.running) {
@@ -392,12 +483,22 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           feed: {
             count: Object.keys(store.feedPosts).length,
             running: st.running,
+            parallel: st.parallel,
             queue: st.queue.map((f) => f.name),
             index: st.index,
             target: st.target,
             counts: st.counts,
             currentName: cur ? cur.name : null,
             currentCount: cur ? (st.counts[cur.name] || 0) : 0,
+            doneCount: st.parallel ? parallelDone(st).length : 0,
+            // feeds actively being grabbed right now (all of them in a
+            // columns run, just the current one sequentially)
+            activeNames: !st.running ? []
+              : st.parallel
+                ? st.queue
+                    .filter((f) => (st.counts[f.name] || 0) < st.target && !st.feedEnded[f.url])
+                    .map((f) => f.name)
+                : (cur ? [cur.name] : []),
             lastError: st.lastError,
           },
           feedList: store.feedList.feeds,
@@ -480,6 +581,94 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
 
+      case 'START_COLUMNS': { // board columns: selected feeds, up to 4 in parallel
+        const feeds = (msg.feeds || [])
+          .filter((f) => f && f.url && f.name)
+          .map((f) => ({ name: f.name, url: normPath(f.url) + '/' }))
+          .slice(0, 4);
+        if (!feeds.length) {
+          sendResponse({ ok: false, error: 'No feeds selected.' });
+          break;
+        }
+        const tab = await findThreadsTab();
+        if (!tab) {
+          store.feedState.lastError = 'No threads.com tab found — open threads.com first.';
+          await persist();
+          sendResponse({ ok: false, error: store.feedState.lastError });
+          break;
+        }
+        // clean slate, like sequential runs; the content script opens columns
+        // for these feeds and reconciles the queue via COLUMNS_INFO
+        store.feedPosts = {};
+        store.feedState = Object.assign({}, FEED_STATE_DEFAULTS, {
+          running: true,
+          parallel: true,
+          queue: feeds,
+          target: Math.max(1, Math.min(2000, Number(msg.target) || 100)),
+          tabId: tab.id,
+          counts: {},
+          feedEnded: {},
+          orderCounters: {},
+        });
+        store.state.grabbing = false; // modes share one scroll loop
+        store.profileState.running = false;
+        chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
+        let onBoard = false;
+        try { onBoard = normPath(new URL(tab.url || '').pathname) === '/'; } catch (_) {}
+        if (onBoard) {
+          touchProgress(store.feedState);
+          await persist();
+          try {
+            await chrome.tabs.sendMessage(tab.id, {
+              type: 'START_SCROLL', mode: 'columns', feeds: store.feedState.queue,
+            });
+          } catch (e) {
+            store.feedState.running = false;
+            store.feedState.lastError = 'Could not reach the Threads tab — reload it and try again.';
+            await persist();
+            sendResponse({ ok: false, error: store.feedState.lastError });
+            break;
+          }
+        } else {
+          store.feedState.awaitingNav = true;
+          touchProgress(store.feedState);
+          await persist();
+          try {
+            await chrome.tabs.update(tab.id, { url: 'https://www.threads.com/' });
+          } catch (e) {
+            store.feedState.lastError = 'Lost the Threads tab.';
+            await finishRun(store);
+            sendResponse({ ok: false, error: store.feedState.lastError });
+            break;
+          }
+        }
+        sendResponse({ ok: true });
+        break;
+      }
+
+      case 'COLUMNS_INFO': { // content script reporting the columns it actually bound
+        const st = store.feedState;
+        if (!st.running || !st.parallel) { sendResponse({ ok: false }); break; }
+        const bound = new Set(
+          (msg.feeds || []).map((f) => normPath(f && f.url) + '/').filter((u) => u !== '//')
+        );
+        const missing = st.queue.filter((f) => !bound.has(f.url));
+        st.queue = st.queue.filter((f) => bound.has(f.url));
+        if (!st.queue.length) {
+          st.lastError = 'Could not open any feed columns on the board.';
+          await finishRun(store);
+          sendResponse({ ok: false, error: st.lastError });
+          break;
+        }
+        if (missing.length) {
+          st.lastError = `couldn't open: ${missing.map((f) => f.name).join(', ')}`;
+        }
+        touchProgress(st);
+        await persist();
+        sendResponse({ ok: true, target: st.target });
+        break;
+      }
+
       case 'START_PROFILE': {
         const tab = await findThreadsTab();
         if (!tab) {
@@ -558,6 +747,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             if (store.feedState.running && !store.feedState.awaitingNav && msg.state === 'done' &&
                 sender && sender.tab && sender.tab.id === store.feedState.tabId) {
               await advanceFeed(store);
+            }
+          } else if (msg.mode === 'columns') {
+            // all columns finished (or none found) — close out the run
+            if (store.feedState.running && store.feedState.parallel && msg.state === 'done' &&
+                sender && sender.tab && sender.tab.id === store.feedState.tabId) {
+              await finishRun(store);
             }
           } else if (msg.mode === 'profile') {
             if (store.profileState.running && !store.profileState.awaitingNav && msg.state === 'done' &&

@@ -9,14 +9,25 @@
   const FEED_RE = /^\/(for_you|following|ghost_posts|custom_feed\/[^/]+)\/?$/;
   // a profile root or its replies tab (NOT /@user/post/… permalinks)
   const PROFILE_RE = /^\/@[^/]+(?:\/replies)?\/?$/;
+  // board home: pinned feeds side by side, each in its own scroll container
+  const BOARD_RE = /^\/$/;
+  const MAX_COLUMNS = 4;  // hard cap on simultaneously driven columns
 
   // ---- scroll driver state ----
   let scrolling = false;
-  let mode = null;        // 'saved' | 'feed' while scrolling
+  let mode = null;        // 'saved' | 'feed' | 'profile' | 'columns' while scrolling
   let idleCycles = 0;     // cycles with no new batch AND no height growth
   let lastHeight = 0;
   let sawEnd = false;     // a captured page_info said has_next_page === false
   let timer = null;
+  // Columns are tracked by INDEX and re-resolved every tick: a freshly added
+  // column renders a skeleton first and Threads replaces its scroller element
+  // when the content hydrates, so cached nodes go stale. Column order is
+  // stable during a run (new columns append at the end).
+  let cols = null;        // columns mode: [{idx, url, idle, lastH, done}]
+  let columnUris = null;  // board column registry from inject.js (DOM order)
+  let desiredFeeds = [];  // columns mode: [{name, url}] the run wants
+  let addedCols = [];     // columns this run added itself: [{url, idx}]
 
   const IDLE_LIMIT = 8;   // ~8 quiet cycles (≈10s) => assume exhausted
   const STEP_MS_MIN = 900;
@@ -26,6 +37,7 @@
     if (SAVED_RE.test(location.pathname)) return 'saved';
     if (FEED_RE.test(location.pathname)) return 'feed';
     if (PROFILE_RE.test(location.pathname)) return 'profile';
+    if (BOARD_RE.test(location.pathname)) return 'board';
     return null;
   }
 
@@ -57,12 +69,69 @@
     chrome.runtime.sendMessage({ type: 'SCROLL_STATE', mode, state, reason }).catch(() => {});
   }
 
-  // ---- relay batches + the discovered feed list from the MAIN-world script ----
+  // ---- on-page banner: signal that an autonomous grab owns this tab ----
+  let banner = null;
+
+  const BANNER_LABEL = {
+    saved: 'grabbing your saved posts',
+    feed: 'grabbing a feed',
+    profile: 'grabbing a profile',
+    columns: 'grabbing feeds in parallel',
+  };
+
+  function showBanner(m) {
+    const label = BANNER_LABEL[m] || 'grabbing';
+    if (banner) {
+      banner.lastChild.textContent = bannerText(label);
+      return;
+    }
+    banner = document.createElement('div');
+    banner.id = 'tse-banner';
+    banner.style.cssText = [
+      'position:fixed', 'left:50%', 'top:14px', 'transform:translateX(-50%)',
+      'z-index:2147483647', 'pointer-events:none',
+      'display:flex', 'align-items:center', 'gap:12px',
+      'padding:12px 22px', 'border-radius:14px',
+      'background:rgba(8,8,8,0.96)', 'border:1.5px solid #3ddc84',
+      'box-shadow:0 6px 32px rgba(0,0,0,0.7), 0 0 0 4px rgba(61,220,132,0.12)',
+      'color:#f3f3f3', 'font:14px/1.4 system-ui,sans-serif', 'white-space:nowrap',
+      'max-width:92vw', 'overflow:hidden', 'text-overflow:ellipsis',
+    ].join(';');
+    const dot = document.createElement('span');
+    dot.style.cssText = 'width:11px;height:11px;border-radius:50%;background:#3ddc84;flex:none;box-shadow:0 0 8px rgba(61,220,132,0.8);';
+    dot.animate(
+      [{ opacity: 1 }, { opacity: 0.25 }, { opacity: 1 }],
+      { duration: 1200, iterations: Infinity, easing: 'ease-in-out' }
+    );
+    const strong = document.createElement('b');
+    strong.textContent = 'Auto-grab running';
+    strong.style.cssText = 'color:#3ddc84;font-weight:700;flex:none;';
+    const text = document.createElement('span');
+    text.textContent = bannerText(label);
+    text.style.cssText = 'color:#cfcfcf;overflow:hidden;text-overflow:ellipsis;';
+    banner.append(dot, strong, text);
+    document.documentElement.appendChild(banner);
+  }
+
+  function bannerText(label) {
+    return `${label} — don’t use this tab, keep it visible · stop anytime from the extension popup`;
+  }
+
+  function hideBanner() {
+    if (banner) banner.remove();
+    banner = null;
+  }
+
+  // ---- relay batches + discovered feed/column lists from the MAIN-world script ----
   window.addEventListener('message', (ev) => {
     const d = ev.data;
     if (ev.source !== window || !d || d.__tse !== true) return;
     if (d.type === 'TSE_FEEDS') {
       chrome.runtime.sendMessage({ type: 'FEEDS', feeds: d.feeds || [] }).catch(() => {});
+      return;
+    }
+    if (d.type === 'TSE_COLUMNS') {
+      columnUris = d.uris || null;
       return;
     }
     if (d.type !== 'TSE_BATCH') return;
@@ -73,11 +142,26 @@
       posts: d.posts || [],
       pageInfo: d.pageInfo,
       origin: d.origin,
+      feedUrl: d.feedUrl || null,
       path: location.pathname,
     };
     if (msg.kind === 'feed') msg.feedName = currentFeedName();
-    chrome.runtime.sendMessage(msg).catch(() => {});
-    if (scrolling && msg.kind === mode) {
+    chrome.runtime.sendMessage(msg).then((resp) => {
+      // columns mode: the service worker reports which feeds hit their target
+      if (mode === 'columns' && cols && resp && Array.isArray(resp.doneFeeds)) {
+        for (const c of cols) if (resp.doneFeeds.includes(c.url)) c.done = true;
+      }
+    }).catch(() => {});
+    if (!scrolling) return;
+    if (mode === 'columns') {
+      if (msg.kind !== 'feed' || !cols || !msg.feedUrl) return;
+      const url = msg.feedUrl.replace(/\/+$/, '') + '/';
+      for (const c of cols) {
+        if (c.url !== url) continue;
+        c.idle = 0;
+        if (d.pageInfo && d.pageInfo.has_next_page === false) c.done = true;
+      }
+    } else if (msg.kind === mode) {
       idleCycles = 0;
       if (d.pageInfo && d.pageInfo.has_next_page === false) sawEnd = true;
     }
@@ -88,7 +172,178 @@
     scrolling = false;
     if (timer) clearTimeout(timer);
     timer = null;
+    cols = null;
+    hideBanner();
+    if (addedCols.length) removeAddedColumns(); // async, best-effort board restore
     sendState('done', reason);
+  }
+
+  // ---- columns mode: open a column per selected feed, drive them in parallel ----
+  // The board's add/remove-column flow responds to synthesized pointer events
+  // (verified live 2026-07-06), so the run can pin the feeds it needs and
+  // unpin them afterwards. UI strings ("Add a column", "Feeds", "More",
+  // "Remove column") assume the English Threads UI.
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  function fireEvents(el, types) {
+    const r = el.getBoundingClientRect();
+    const opts = {
+      bubbles: true, cancelable: true, composed: true, view: window,
+      clientX: r.x + r.width / 2, clientY: r.y + r.height / 2,
+      pointerId: 1, pointerType: 'mouse', isPrimary: true, buttons: 1,
+    };
+    for (const t of types) {
+      const Ev = t.indexOf('pointer') === 0 ? PointerEvent : MouseEvent;
+      el.dispatchEvent(new Ev(t, opts));
+    }
+  }
+  const fireHover = (el) => fireEvents(el, ['pointerover', 'mouseover', 'pointermove', 'mousemove']);
+  const fireClick = (el) => fireEvents(el, ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']);
+
+  async function waitFor(fn, ms) {
+    const t0 = Date.now();
+    for (;;) {
+      const v = fn();
+      if (v) return v;
+      if (Date.now() - t0 > ms) return null;
+      await sleep(200);
+    }
+  }
+
+  const colScrollers = () => [...document.querySelectorAll('[data-column-scrollable]')];
+  const menuItems = () =>
+    [...document.querySelectorAll('[role="menu"] [role="button"], [role="menu"] button, [role="menuitem"]')];
+  const buttonByText = (text) =>
+    [...document.querySelectorAll('[role="button"], button')]
+      .find((b) => (b.textContent || '').trim() === text);
+
+  // find the submenu entry for a feed. Plain feeds render just the name, but
+  // community feeds append stats ("Tech Threads122K members · …"), so also
+  // accept an item containing a leaf element that is exactly the name.
+  function feedMenuItem(name) {
+    const items = menuItems();
+    return items.find((b) => (b.textContent || '').trim() === name) ||
+      items.find((b) => [...b.querySelectorAll('*')].some(
+        (el) => el.children.length === 0 && (el.textContent || '').trim() === name)) ||
+      null;
+  }
+
+  function closeMenus() {
+    if (document.querySelector('[role="menu"]')) fireClick(document.body);
+  }
+
+  // drive: "Add a column" -> Feeds -> <feed name>; resolves to the new
+  // column's INDEX among [data-column-scrollable] scrollers, or -1
+  async function addFeedColumn(name) {
+    const addBtn = buttonByText('Add a column');
+    if (!addBtn) return -1;
+    fireClick(addBtn);
+    if (!(await waitFor(() => document.querySelector('[role="menu"]'), 3000))) return -1;
+    const feedsItem = await waitFor(
+      () => menuItems().find((b) => /^Feeds/.test((b.textContent || '').trim())), 2000);
+    if (!feedsItem) { closeMenus(); return -1; }
+    fireHover(feedsItem);
+    await sleep(250);
+    fireClick(feedsItem);
+    const item = await waitFor(() => feedMenuItem(name), 3000);
+    if (!item) { closeMenus(); return -1; }
+    item.scrollIntoView({ block: 'nearest' }); // the feed list scrolls past ~6 entries
+    await sleep(150);
+    const before = colScrollers().length;
+    fireClick(item);
+    const grown = await waitFor(() => colScrollers().length > before, 5000);
+    closeMenus();
+    return grown ? colScrollers().length - 1 : -1;
+  }
+
+  // remove a column this run added: its header "More" -> "Remove column"
+  async function removeColumn(el) {
+    if (!el || !document.contains(el)) return;
+    const bodyRect = el.getBoundingClientRect();
+    const more = [...document.querySelectorAll('[role="button"], button')].find((b) => {
+      const r = b.getBoundingClientRect();
+      return r.width > 0 && r.y < bodyRect.y &&
+        r.x >= bodyRect.x - 10 && r.x <= bodyRect.x + bodyRect.width &&
+        (b.textContent || '').trim() === 'More';
+    });
+    if (!more) return;
+    fireClick(more);
+    const item = await waitFor(
+      () => menuItems().find((b) => /Remove column/.test((b.textContent || '').trim())), 3000);
+    if (!item) { closeMenus(); return; }
+    fireClick(item);
+    await sleep(1000);
+  }
+
+  async function removeAddedColumns() {
+    const toRemove = addedCols;
+    addedCols = [];
+    // highest index first, so earlier removals don't shift later ones
+    toRemove.sort((a, b) => b.idx - a.idx);
+    for (const c of toRemove) await removeColumn(colScrollers()[c.idx]);
+  }
+
+  async function startColumns() {
+    // re-scan announces the column registry (TSE_COLUMNS); this replay's
+    // batches are dropped by the service worker because no queue exists yet
+    window.postMessage({ __tse: true, type: 'TSE_RESCAN' }, window.location.origin);
+    await sleep(700);
+    if (!scrolling || mode !== 'columns') return;
+
+    const desired = desiredFeeds.slice(0, MAX_COLUMNS);
+    // columns already pinned, by registry order (uris align with the DOM)
+    const uris = (columnUris || []).map((u) => (typeof u === 'string' ? u.replace(/\/+$/, '') + '/' : null));
+    const bound = [];
+    for (const f of desired) {
+      if (!scrolling || mode !== 'columns') return;
+      let idx = uris.indexOf(f.url);
+      if (idx === -1) {
+        idx = await addFeedColumn(f.name); // not pinned — open it ourselves
+        if (idx !== -1) addedCols.push({ url: f.url, idx });
+      }
+      if (idx !== -1) bound.push({ idx, url: f.url, idle: 0, lastH: 0, done: false });
+    }
+    cols = bound;
+    if (!cols.length) return stopScroll('could not open any feed columns');
+    chrome.runtime.sendMessage({
+      type: 'COLUMNS_INFO',
+      feeds: cols.map((c) => ({ url: c.url })),
+    }).then(() => {
+      if (!scrolling || mode !== 'columns') return;
+      // queue registered — NOW replay so each column's embedded first
+      // batch (its top posts) is counted before any scrolling
+      window.postMessage({ __tse: true, type: 'TSE_RESCAN' }, window.location.origin);
+      // freshly added columns render a skeleton first — give them a moment
+      timer = setTimeout(stepColumns, addedCols.length ? 2500 : 800);
+    }).catch(() => stopScroll('extension unreachable'));
+  }
+
+  function stepColumns() {
+    if (!scrolling || !cols) return;
+    const scrollers = colScrollers(); // fresh every tick — elements get replaced
+    const active = cols.filter((c) => !c.done);
+    if (!active.length) return stopScroll('all columns finished');
+    for (const c of active) {
+      const el = scrollers[c.idx];
+      if (!el) { // column briefly (or permanently) gone — idle it out
+        if (++c.idle >= IDLE_LIMIT) c.done = true;
+        continue;
+      }
+      const h = el.scrollHeight;
+      if (h === c.lastH) c.idle++;
+      else c.idle = 0;
+      c.lastH = h;
+      if (c.idle >= IDLE_LIMIT) { c.done = true; continue; }
+      if (c.idle > 0 && c.idle % 3 === 0) {
+        // same sentinel nudge as the single-feed driver, per column
+        el.scrollTop = Math.max(0, h - el.clientHeight * 2.5);
+      } else {
+        el.scrollTop = h;
+      }
+    }
+    sendState('running');
+    timer = setTimeout(stepColumns, STEP_MS_MIN + Math.random() * (STEP_MS_MAX - STEP_MS_MIN));
   }
 
   function step() {
@@ -114,27 +369,36 @@
     timer = setTimeout(step, STEP_MS_MIN + Math.random() * (STEP_MS_MAX - STEP_MS_MIN));
   }
 
-  function startScroll(m) {
+  function startScroll(m, feeds) {
     if (scrolling && mode === m) return;
     if (scrolling) { // switching modes: kill the old loop first
       scrolling = false;
       if (timer) clearTimeout(timer);
+      cols = null;
     }
     mode = m;
-    if (pageKind() !== m) {
+    if (m === 'columns') desiredFeeds = Array.isArray(feeds) ? feeds : [];
+    const expected = m === 'columns' ? 'board' : m;
+    if (pageKind() !== expected) {
       if (m === 'saved') {
         // Navigate there; after the reload this script re-runs and the
         // service worker restarts the grab via CONTENT_READY.
         location.assign('/saved');
       }
-      // feed mode: the service worker drives navigation itself — if we're not
-      // on a feed page yet, a navigation is already on its way.
+      // feed/columns mode: the service worker drives navigation itself — if
+      // we're not on the right page yet, a navigation is already on its way.
       return;
     }
     scrolling = true;
     sawEnd = false;
     idleCycles = 0;
     lastHeight = 0;
+    showBanner(m);
+    if (m === 'columns') {
+      sendState('running');
+      startColumns();
+      return;
+    }
     window.scrollTo(0, 0); // start from the top so the first batch is on screen
     // Ask inject.js to replay everything it captured before the grab started
     // (server-embedded first batch, any manual pre-scrolling).
@@ -145,11 +409,14 @@
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === 'START_SCROLL') {
-      startScroll(msg.mode || 'saved');
+      startScroll(msg.mode || 'saved', msg.feeds);
       sendResponse({ ok: true, pageKind: pageKind() });
     } else if (msg.type === 'STOP_SCROLL') {
       scrolling = false;
       if (timer) clearTimeout(timer);
+      cols = null;
+      hideBanner();
+      if (addedCols.length) removeAddedColumns(); // best-effort board restore
       sendState('stopped', msg.reason || 'stopped');
       sendResponse({ ok: true });
     } else if (msg.type === 'GET_USERNAME') {

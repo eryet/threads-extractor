@@ -57,6 +57,8 @@
       text: (raw.caption && raw.caption.text) || '',
       media: mediaUrlsOf(raw),
       likeCount: typeof raw.like_count === 'number' ? raw.like_count : null,
+      replyCount: raw.text_post_app_info && typeof raw.text_post_app_info.direct_reply_count === 'number'
+        ? raw.text_post_app_info.direct_reply_count : null,
       takenAt: raw.taken_at ? new Date(raw.taken_at * 1000).toISOString() : null,
       savedAt: null, // Threads does not expose the saved timestamp
       capturedAt,

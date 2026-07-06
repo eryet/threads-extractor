@@ -35,8 +35,18 @@
       font-weight: 800; font-size: 15px;
     }
     .head h1 { font-size: 14px; font-weight: 650; margin: 0; letter-spacing: 0.01em; }
-    .dot {
+    .dashBtn {
       margin-left: auto;
+      padding: 4px 9px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--card);
+      color: var(--muted);
+      font-size: 11px; font-weight: 600;
+      cursor: pointer;
+    }
+    .dashBtn:hover { background: var(--card2); color: var(--text); }
+    .dot {
       width: 8px; height: 8px; border-radius: 50%;
       background: #3a3a3a;
       transition: background 0.2s;
@@ -169,7 +179,9 @@
     .feedItem.active .fcount { background: rgba(61, 220, 132, 0.22); color: #bff3d4; }
     .feedItem .fcount:empty { display: none; }
     .feedItem .spinner {
-      margin-left: auto; flex: none;
+      /* count pill owns the auto margin — a second auto would split the
+         leftover space and strand the pill mid-row */
+      margin-left: 0; flex: none;
       width: 12px; height: 12px;
       border: 2px solid rgba(61, 220, 132, 0.35);
       border-top-color: var(--ok);
@@ -234,6 +246,16 @@
     button.act:disabled { opacity: 0.4; cursor: default; transform: none; }
     button.primary { background: var(--text); border-color: var(--text); color: var(--bg); font-weight: 650; }
     button.primary:hover { background: #ddd; }
+    /* stop buttons: darker than the action buttons, and tinted red while a
+       run is actually stoppable so they double as a "running" indicator */
+    button.stop { background: #0c0c0c; border-color: #222; color: var(--faint); }
+    button.stop:not(:disabled) {
+      color: var(--danger);
+      border-color: rgba(255, 123, 114, 0.4);
+      background: #170f0e;
+      font-weight: 650;
+    }
+    button.stop:not(:disabled):hover { background: #221312; border-color: var(--danger); }
     .row { display: flex; gap: 6px; }
     .row button { flex: 1; }
 
@@ -261,6 +283,7 @@
   <div class="head">
     <div class="logo">@</div>
     <h1>Threads Extractor</h1>
+    <button class="dashBtn" id="btnDash" title="Browse everything captured so far">Dashboard ↗</button>
     <div class="dot" id="liveDot"></div>
   </div>
 
@@ -280,7 +303,7 @@
     </div>
 
     <button id="btnStart" class="act primary">Grab all saved</button>
-    <button id="btnStop" class="act" disabled>Stop</button>
+    <button id="btnStop" class="act stop" disabled>Stop</button>
 
     <div class="exportHead">Export</div>
     <div class="row">
@@ -315,8 +338,10 @@
       <input type="number" id="feedTarget" min="1" max="2000" step="1" value="100" />
     </div>
 
-    <button id="btnFeedStart" class="act primary">Grab selected feeds</button>
-    <button id="btnFeedStop" class="act" disabled>Stop run</button>
+    <button id="btnColsStart" class="act primary">Grab in batch · up to 4 at once</button>
+    <button id="btnFeedStart" class="act">Grab one by one</button>
+    <div class="hint">batch opens the selected feeds side by side and grabs them together (first 4 selected) · one by one visits each feed page in turn, any number — either way, keep the tab visible</div>
+    <button id="btnFeedStop" class="act stop" disabled>Stop run</button>
 
     <div class="exportHead">Export</div>
     <div class="row">
@@ -344,7 +369,7 @@
       <button id="btnProfThreads" class="act primary">Grab threads</button>
       <button id="btnProfReplies" class="act primary">Grab replies</button>
     </div>
-    <button id="btnProfStop" class="act" disabled>Stop</button>
+    <button id="btnProfStop" class="act stop" disabled>Stop</button>
     <div class="hint">blank = your own profile · replies include the full post replied to</div>
 
     <div class="exportHead">Export</div>

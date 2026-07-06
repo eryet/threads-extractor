@@ -40,16 +40,16 @@
     const feed = kind === 'feed';
     const profile = kind === 'profile';
     const header = profile
-      ? ['profile', 'section', 'profileOrder', 'id', 'url', 'text', 'takenAt', 'likeCount', 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
+      ? ['profile', 'section', 'profileOrder', 'id', 'url', 'text', 'takenAt', 'likeCount', 'replyCount', 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
       : feed
-        ? ['feed', 'feedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', 'likeCount', 'media', 'capturedAt']
-        : ['savedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', 'savedAt', 'likeCount', 'media', 'capturedAt'];
+        ? ['feed', 'feedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', 'likeCount', 'replyCount', 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
+        : ['savedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', 'savedAt', 'likeCount', 'replyCount', 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt'];
     const rows = [header.join(',')];
     for (const p of sortPosts(posts)) {
+      const rt = p.replyTo || {};
       let cells;
       if (profile) {
-        const rt = p.replyTo || {};
-        cells = [p.profileHandle, p.section, p.profileOrder, p.id, p.url, p.text, p.takenAt, p.likeCount,
+        cells = [p.profileHandle, p.section, p.profileOrder, p.id, p.url, p.text, p.takenAt, p.likeCount, p.replyCount,
           rt.author && rt.author.handle, rt.url, rt.text];
       } else {
         cells = feed ? [p.feed, p.feedOrder] : [p.savedOrder];
@@ -60,7 +60,7 @@
           p.text, p.takenAt
         );
         if (!feed) cells.push(p.savedAt);
-        cells.push(p.likeCount);
+        cells.push(p.likeCount, p.replyCount, rt.author && rt.author.handle, rt.url, rt.text);
       }
       cells.push((p.media || []).join(' | '), p.capturedAt);
       rows.push(cells.map(csvCell).join(','));
@@ -116,7 +116,7 @@
       } else {
         out.push('');
       }
-      if (profile && p.replyTo) {
+      if (p.replyTo) {
         // quote the full post this one replies to
         const rt = p.replyTo;
         const rtHandle = (rt.author && rt.author.handle) || '@unknown';
