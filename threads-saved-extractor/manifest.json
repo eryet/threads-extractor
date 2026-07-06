@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Threads Saved Posts Extractor",
-  "version": "0.1.0",
-  "description": "Personal tool: export your own saved (bookmarked) Threads posts as JSON / CSV / Markdown. Runs entirely locally.",
+  "version": "0.6.0",
+  "description": "Personal tool: export your own saved (bookmarked) Threads posts and feed posts as JSON / CSV / Markdown. Runs entirely locally.",
   "minimum_chrome_version": "111",
-  "permissions": ["storage", "downloads"],
+  "permissions": ["storage", "downloads", "alarms"],
   "host_permissions": [
     "https://www.threads.com/*",
     "https://threads.com/*"

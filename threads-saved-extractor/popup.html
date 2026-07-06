@@ -3,54 +3,358 @@
 <head>
   <meta charset="utf-8" />
   <style>
-    body {
-      width: 280px;
-      margin: 0;
-      padding: 14px;
-      font-family: system-ui, -apple-system, sans-serif;
-      background: #101010;
-      color: #f3f3f3;
+    :root {
+      --bg: #101010;
+      --card: #181818;
+      --card2: #1e1e1e;
+      --border: #2c2c2c;
+      --text: #f3f3f3;
+      --muted: #9a9a9a;
+      --faint: #6c6c6c;
+      --accent: #f3f3f3;
+      --danger: #ff7b72;
+      --ok: #3ddc84;
     }
-    h1 { font-size: 14px; margin: 0 0 10px; font-weight: 600; }
-    .count { font-size: 28px; font-weight: 700; margin: 4px 0 2px; }
-    .status { font-size: 12px; color: #9a9a9a; min-height: 16px; margin-bottom: 10px; }
-    .status.error { color: #ff7b72; }
-    button {
-      width: 100%;
-      padding: 8px 10px;
-      margin: 3px 0;
-      border: 1px solid #333;
-      border-radius: 8px;
-      background: #1c1c1c;
-      color: #f3f3f3;
-      font-size: 13px;
+    * { box-sizing: border-box; }
+    body {
+      width: 320px;
+      margin: 0;
+      padding: 14px 14px 12px;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      user-select: none;
+    }
+
+    /* ---- header ---- */
+    .head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .logo {
+      width: 26px; height: 26px; border-radius: 8px;
+      background: var(--text); color: var(--bg);
+      display: grid; place-items: center;
+      font-weight: 800; font-size: 15px;
+    }
+    .head h1 { font-size: 14px; font-weight: 650; margin: 0; letter-spacing: 0.01em; }
+    .dot {
+      margin-left: auto;
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #3a3a3a;
+      transition: background 0.2s;
+    }
+    .dot.live { background: var(--ok); animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: 0.35; } }
+
+    /* ---- tabs ---- */
+    .tabs {
+      display: flex; gap: 4px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 3px;
+      margin-bottom: 12px;
+    }
+    .tabs button {
+      flex: 1;
+      padding: 6px 0;
+      border: 0; border-radius: 7px;
+      background: transparent;
+      color: var(--muted);
+      font-size: 12.5px; font-weight: 600;
       cursor: pointer;
     }
-    button:hover { background: #262626; }
-    button:disabled { opacity: 0.45; cursor: default; }
-    #btnStart { background: #f3f3f3; color: #101010; font-weight: 600; }
-    #btnStart:hover { background: #ddd; }
+    .tabs button.active { background: var(--card2); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+    .tabs button .badge {
+      display: inline-block; margin-left: 5px;
+      padding: 1px 6px; border-radius: 99px;
+      background: #2e2e2e; color: var(--muted);
+      font-size: 10.5px; font-weight: 600;
+    }
+
+    /* ---- stat card ---- */
+    .stat {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px 12px 11px;
+      margin-bottom: 10px;
+    }
+    .stat .num { font-size: 26px; font-weight: 750; line-height: 1.1; }
+    .stat .lbl { font-size: 11px; color: var(--faint); margin-top: 1px; }
+    .stat .msg { font-size: 12px; color: var(--muted); margin-top: 7px; min-height: 15px; }
+    .stat .msg.error { color: var(--danger); }
+    .bar {
+      height: 4px; border-radius: 99px;
+      background: #262626;
+      margin-top: 9px;
+      overflow: hidden;
+      display: none;
+    }
+    .bar.on { display: block; }
+    .bar .fill {
+      height: 100%; width: 0%;
+      border-radius: 99px;
+      background: var(--text);
+      transition: width 0.4s ease;
+    }
+    .bar.indet .fill {
+      width: 35%;
+      animation: slide 1.2s ease-in-out infinite;
+    }
+    @keyframes slide {
+      0% { transform: translateX(-120%); }
+      100% { transform: translateX(340%); }
+    }
+
+    /* ---- feed picker ---- */
+    .pickHead {
+      display: flex; align-items: baseline;
+      margin: 2px 2px 5px;
+    }
+    .pickHead .t { font-size: 11px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: 0.07em; }
+    .pickHead .selcount { font-size: 11px; color: var(--faint); margin-left: 7px; }
+    .pickHead .links { margin-left: auto; font-size: 11px; }
+    .pickHead a { color: var(--faint); text-decoration: none; cursor: pointer; }
+    .pickHead a:hover { color: var(--text); }
+    .pickHead .sepDot { color: #3a3a3a; margin: 0 4px; }
+    #feedPicker {
+      max-height: 200px;
+      overflow-y: auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 5px;
+      margin-bottom: 4px;
+    }
+    #feedPicker::-webkit-scrollbar { width: 8px; }
+    #feedPicker::-webkit-scrollbar-thumb { background: #303030; border-radius: 99px; }
+    .feedGroup {
+      font-size: 10px; font-weight: 650; color: var(--faint);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 6px 6px 3px;
+    }
+    .feedGroup:first-child { padding-top: 3px; }
+    .feedItem {
+      display: flex; align-items: center; gap: 9px;
+      padding: 7px 8px;
+      border-radius: 9px;
+      font-size: 13px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .feedItem:hover { background: var(--card2); }
+    .feedItem.sel { background: rgba(243, 243, 243, 0.07); }
+    .feedItem.active { border-color: var(--ok); background: rgba(61, 220, 132, 0.10); }
+    .feedItem .check {
+      width: 17px; height: 17px; flex: none;
+      border-radius: 6px;
+      border: 1.5px solid #4a4a4a;
+      display: grid; place-items: center;
+    }
+    .feedItem.sel .check { background: var(--accent); border-color: var(--accent); }
+    .feedItem .check::after {
+      content: '✓'; font-size: 11px; font-weight: 800; line-height: 1;
+      color: var(--bg); opacity: 0;
+    }
+    .feedItem.sel .check::after { opacity: 1; }
+    .feedItem .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .feedItem .fcount {
+      margin-left: auto; flex: none;
+      font-size: 10.5px; font-weight: 600;
+      color: var(--muted);
+      background: #2a2a2a;
+      border-radius: 99px;
+      padding: 1px 7px;
+    }
+    .feedItem.active .fcount { background: rgba(61, 220, 132, 0.22); color: #bff3d4; }
+    .feedItem .fcount:empty { display: none; }
+    .feedItem .spinner {
+      margin-left: auto; flex: none;
+      width: 12px; height: 12px;
+      border: 2px solid rgba(61, 220, 132, 0.35);
+      border-top-color: var(--ok);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .hint { font-size: 11px; color: var(--faint); margin: 2px 2px 6px; }
+
+    /* ---- controls ---- */
+    .targetRow {
+      display: flex; align-items: center; gap: 8px;
+      margin: 8px 2px 8px;
+    }
+    .targetRow label { font-size: 12px; color: var(--muted); }
+    input[type="number"] {
+      margin-left: auto;
+      width: 76px;
+      padding: 6px 9px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 13px;
+      text-align: right;
+    }
+    input[type="number"]:focus { outline: 1px solid #4a4a4a; }
+
+    .handleRow {
+      display: flex; align-items: center;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0 10px;
+      margin: 2px 0 8px;
+    }
+    .handleRow .at { color: var(--faint); font-size: 13px; }
+    input[type="text"] {
+      flex: 1;
+      padding: 8px 6px;
+      border: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 13px;
+    }
+    input[type="text"]:focus { outline: none; }
+    input[type="text"]::placeholder { color: var(--faint); }
+
+    button.act {
+      width: 100%;
+      padding: 9px 10px;
+      margin: 3px 0;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 13px; font-weight: 550;
+      cursor: pointer;
+    }
+    button.act:hover { background: var(--card2); }
+    button.act:active { transform: translateY(1px); }
+    button.act:disabled { opacity: 0.4; cursor: default; transform: none; }
+    button.primary { background: var(--text); border-color: var(--text); color: var(--bg); font-weight: 650; }
+    button.primary:hover { background: #ddd; }
     .row { display: flex; gap: 6px; }
     .row button { flex: 1; }
-    .sep { border: none; border-top: 1px solid #2a2a2a; margin: 10px 0; }
-    #btnClear { color: #ff7b72; }
+
+    .exportHead {
+      font-size: 11px; font-weight: 650; color: var(--faint);
+      text-transform: uppercase; letter-spacing: 0.07em;
+      margin: 10px 2px 3px;
+    }
+    button.ghost {
+      border-color: transparent;
+      background: transparent;
+      color: var(--faint);
+      font-size: 12px;
+      padding: 6px;
+      margin: 2px 0 0;
+    }
+    button.ghost:hover { background: transparent; color: var(--danger); }
+    button.ghost:disabled:hover { color: var(--faint); }
+
+    .pane { display: none; }
+    .pane.active { display: block; }
   </style>
 </head>
 <body>
-  <h1>Threads Saved Extractor</h1>
-  <div class="count" id="count">0</div>
-  <div class="status" id="status">posts captured</div>
-
-  <button id="btnStart">Grab all saved</button>
-  <button id="btnStop" disabled>Stop</button>
-
-  <hr class="sep" />
-  <div class="row">
-    <button id="btnJson" disabled>JSON</button>
-    <button id="btnCsv" disabled>CSV</button>
-    <button id="btnMd" disabled>MD</button>
+  <div class="head">
+    <div class="logo">@</div>
+    <h1>Threads Extractor</h1>
+    <div class="dot" id="liveDot"></div>
   </div>
-  <button id="btnClear" disabled>Clear captured data</button>
+
+  <div class="tabs">
+    <button id="tabSaved">Saved<span class="badge" id="badgeSaved">0</span></button>
+    <button id="tabFeeds">Feeds<span class="badge" id="badgeFeeds">0</span></button>
+    <button id="tabProfile">Profile<span class="badge" id="badgeProfile">0</span></button>
+  </div>
+
+  <!-- ================= SAVED ================= -->
+  <div class="pane" id="paneSaved">
+    <div class="stat">
+      <div class="num" id="count">0</div>
+      <div class="lbl">saved posts captured</div>
+      <div class="msg" id="status">ready</div>
+      <div class="bar indet" id="savedBar"><div class="fill"></div></div>
+    </div>
+
+    <button id="btnStart" class="act primary">Grab all saved</button>
+    <button id="btnStop" class="act" disabled>Stop</button>
+
+    <div class="exportHead">Export</div>
+    <div class="row">
+      <button id="btnJson" class="act" disabled>JSON</button>
+      <button id="btnCsv" class="act" disabled>CSV</button>
+      <button id="btnMd" class="act" disabled>MD</button>
+    </div>
+    <button id="btnClear" class="act ghost" disabled>Clear captured data</button>
+  </div>
+
+  <!-- ================= FEEDS ================= -->
+  <div class="pane" id="paneFeeds">
+    <div class="stat">
+      <div class="num" id="feedCount">0</div>
+      <div class="lbl">feed posts captured</div>
+      <div class="msg" id="feedStatus">select feeds, then run</div>
+      <div class="bar" id="feedBar"><div class="fill" id="feedBarFill"></div></div>
+    </div>
+
+    <div class="pickHead">
+      <span class="t">Feeds</span>
+      <span class="selcount" id="feedSelCount"></span>
+      <span class="links">
+        <a id="selAll">all</a><span class="sepDot">·</span><a id="selNone">none</a>
+      </span>
+    </div>
+    <div id="feedPicker"></div>
+    <div class="hint" id="feedHint" hidden>open any feed page once so your custom feeds show up here</div>
+
+    <div class="targetRow">
+      <label for="feedTarget">Posts per feed</label>
+      <input type="number" id="feedTarget" min="1" max="2000" step="1" value="100" />
+    </div>
+
+    <button id="btnFeedStart" class="act primary">Grab selected feeds</button>
+    <button id="btnFeedStop" class="act" disabled>Stop run</button>
+
+    <div class="exportHead">Export</div>
+    <div class="row">
+      <button id="btnFeedJson" class="act" disabled>JSON</button>
+      <button id="btnFeedCsv" class="act" disabled>CSV</button>
+      <button id="btnFeedMd" class="act" disabled>MD</button>
+    </div>
+    <button id="btnFeedClear" class="act ghost" disabled>Clear feed data</button>
+  </div>
+
+  <!-- ================= PROFILE ================= -->
+  <div class="pane" id="paneProfile">
+    <div class="stat">
+      <div class="num" id="profCount">0</div>
+      <div class="lbl" id="profLbl">profile posts captured</div>
+      <div class="msg" id="profStatus">grab your own threads</div>
+      <div class="bar indet" id="profBar"><div class="fill"></div></div>
+    </div>
+
+    <div class="handleRow">
+      <span class="at">@</span>
+      <input type="text" id="profHandle" placeholder="my profile (leave blank)" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="row">
+      <button id="btnProfThreads" class="act primary">Grab threads</button>
+      <button id="btnProfReplies" class="act primary">Grab replies</button>
+    </div>
+    <button id="btnProfStop" class="act" disabled>Stop</button>
+    <div class="hint">blank = your own profile · replies include the full post replied to</div>
+
+    <div class="exportHead">Export</div>
+    <div class="row">
+      <button id="btnProfJson" class="act" disabled>JSON</button>
+      <button id="btnProfCsv" class="act" disabled>CSV</button>
+      <button id="btnProfMd" class="act" disabled>MD</button>
+    </div>
+    <button id="btnProfClear" class="act ghost" disabled>Clear profile data</button>
+  </div>
 
   <script src="lib/export.js"></script>
   <script src="popup.js"></script>

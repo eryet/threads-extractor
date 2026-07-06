@@ -1,8 +1,10 @@
-# Threads Saved Posts Extractor
+# Threads Posts Extractor
 
-Personal MV3 Chrome extension that exports **your own** saved (bookmarked)
-Threads posts as JSON / CSV / Markdown. Everything stays local — no backend,
-no accounts, no data leaves your machine.
+Personal MV3 Chrome extension that exports **your own** Threads data as
+JSON / CSV / Markdown — your saved (bookmarked) posts, the top N posts of any
+feed (For you / Following / Ghost posts / your custom feeds), and your own
+profile (threads + optionally your replies). Everything stays local — no
+backend, no accounts, no data leaves your machine.
 
 ## Install (unpacked)
 
@@ -12,6 +14,8 @@ no accounts, no data leaves your machine.
 
 ## Use
 
+### Saved posts
+
 1. Open [threads.com/saved](https://www.threads.com/saved) while logged in
    (if you're elsewhere on threads.com the extension navigates there for you)
 2. Click the extension icon → **Grab all saved**
@@ -19,65 +23,137 @@ no accounts, no data leaves your machine.
    shows a live count. It stops by itself at the end of the feed.
 4. Export with **JSON / CSV / MD**. **Clear captured data** resets the store.
 
-Capture is passive: it reads the GraphQL responses Threads itself loads while
-scrolling. You can also just scroll the saved page manually — anything that
-loads gets captured, no "grab" needed.
+Saved capture is passive: anything that loads on /saved gets captured even
+without hitting "grab".
+
+### Feeds (automated multi-feed runs)
+
+1. Have any threads.com tab open. Your custom feeds appear in the popup's
+   **Feeds** checklist automatically (they're discovered passively from page
+   data whenever you're on a single-column page — visit any feed or the saved
+   page once if the list is empty).
+2. Tick the feeds you want (For you / Following / Ghost posts / your custom
+   feeds — selection is remembered), set **Posts per feed** (default 100),
+   and click **Grab selected feeds**.
+3. The extension does the rest: it navigates the tab to each selected feed in
+   turn, scrolls, captures the top N posts, and moves on — no interaction
+   needed. Keep the tab visible; Threads pauses feed loading in hidden tabs.
+   A watchdog skips any feed that stalls for 60s, so a run always finishes.
+4. Export everything with the Feeds section's **JSON / CSV / MD** buttons —
+   one combined file with a `feed` column/section per feed.
+
+Each run starts from a clean slate ("the top N of these feeds right now").
+Unlike saved capture, feed capture only records while a run is active and
+only from the tab driving it — normal browsing is never hoovered up. A post
+appearing in two selected feeds is kept once per feed, so per-feed rankings
+stay complete.
+
+### Profiles (yours or anyone's · threads + replies)
+
+1. In the popup's **Profile** tab, optionally type a **@handle** (leave it
+   blank for your own profile), then click **Grab threads** or **Grab
+   replies**.
+2. The extension navigates to that profile (or its Replies tab) and grabs
+   top-to-bottom. Only posts authored by the profile owner are stored — but
+   each reply embeds the **full post it replies to** as `replyTo` (a complete
+   normalized post: author, text, URL, date, likes, media). A blank handle
+   resolves your own from the sidebar Profile link.
+3. Grabs are independent and additive: threads and replies are separate
+   buttons, each replaces only *that profile's* *that section*, and different
+   users accumulate — so you can build up several people's posts and export
+   them together.
+4. Export with the Profile tab's **JSON / CSV / MD** buttons. Output is
+   grouped by profile then section (`profile` + `section` columns in CSV);
+   Markdown nests profile → section → posts and block-quotes each replied-to
+   post in full.
+
+This reads other users' **public** posts through your own logged-in session,
+one profile at a time, with the same deliberately throttled scrolling — a
+private account you don't follow simply returns nothing. Keep it personal and
+low-volume.
 
 ## How it works
 
 ```
 threads.com tab
- ├─ inject.js   (MAIN world)  wraps fetch/XHR, matches responses containing
- │              "saved_media"; also scans the server-embedded JSON that holds
- │              the FIRST batch (it is never fetched, so interception alone
- │              would miss it)
- ├─ content.js  (isolated)    relays batches to the service worker, drives
- │                            auto-scroll until page_info.has_next_page=false
- │                            or the feed stops growing
- ├─ sw.js                     dedupes by post id, normalizes, buffers in
- │                            chrome.storage.local
- └─ popup                     start/stop, live count, export via chrome.downloads
+ ├─ inject.js   (MAIN world)  wraps fetch/XHR, matches responses containing a
+ │              known connection key (saved_media / feedData / results); also
+ │              scans the server-embedded JSON that holds each page's FIRST
+ │              batch (it is never fetched), and keeps a replay buffer so a
+ │              grab started after page load can recover earlier batches
+ ├─ content.js  (isolated)    relays batches (tagged saved/feed) + the feed
+ │                            list to the service worker; drives auto-scroll
+ │                            until has_next_page is false, the feed stops
+ │                            growing, or the SW says stop; announces
+ │                            CONTENT_READY after each navigation
+ ├─ sw.js                     two stores: saved (always-on capture) and feeds
+ │                            (per-run, target-capped). Multi-feed runs: keeps
+ │                            a queue, navigates the tab feed→feed
+ │                            (chrome.tabs.update), starts scrolling on
+ │                            CONTENT_READY, advances at target / feed end,
+ │                            watchdog alarm skips stalled feeds
+ └─ popup                     Saved section + Feeds checklist (discovered
+ │                            custom feeds + built-ins), posts-per-feed, live
+                              run progress, exports via chrome.downloads
 ```
 
-### Discovery findings (2026-07-03, encoded in `inject.js` / `lib/normalize.js`)
+### Discovery findings (2026-07-03 saved, 2026-07-06 feeds — encoded in `inject.js` / `lib/normalize.js`)
 
 | What | Value |
 |---|---|
 | Endpoint | `POST https://www.threads.com/graphql/query` (threads.com host — no instagram.com permission needed) |
-| Query | `BarcelonaSavedPageViewerQuery` / `BarcelonaSavedPagePaginationFragment_connection` |
-| Node path | `data.xdt_text_app_viewer.saved_media.edges[].node.thread_items[].post` |
-| Pagination | `saved_media.page_info.{end_cursor, has_next_page}` |
+| Saved query | `BarcelonaSavedPageViewerQuery` / `BarcelonaSavedPagePaginationFragment_connection` |
+| Saved path | `data.xdt_text_app_viewer.saved_media.edges[].node.thread_items[].post` |
+| For you / Following query | `BarcelonaFeedPaginationDirectQuery` |
+| For you / Following path | `data…feedData.edges[].node.text_post_app_thread.thread_items[].post` (edges without a thread — e.g. `suggested_users` — are skipped) |
+| Custom feed query | `BarcelonaCustomFeedRefetchableQuery` (page `/custom_feed/<id>/`) |
+| Custom feed path | `data…results.edges[].node.thread_items[].post` (`results` is generic, so it only counts when its edges carry posts) |
+| Pagination | `<conn>.page_info.{end_cursor, has_next_page}` on every connection |
 | Post URL | `https://www.threads.com/@{user.username}/post/{code}` |
 | Saved timestamp | **not exposed** anywhere → `savedAt` is always `null` |
+| Feed pages | only the single-column pages (`/for_you/` etc.) window-scroll; the board home (`/`) uses column scrollers and is not driven |
+| Custom-feed list | embedded on single-column pages: `data.custom_feeds.interest_feeds[] = {feed_name, id}` → page `/custom_feed/<id>/` |
+| Profile (Threads + Replies tabs) | `/@user` and `/@user/replies` both use connection key `mediaData`, node = thread with `thread_items[].post`; Replies threads interleave parent posts by others (filtered by username) |
+| Own username | the only bare `/@x` link inside the sidebar `[role="navigation"]` |
 
-### About `savedAt` / `savedOrder`
+### About order fields
 
-`savedAt` is always `null` because Threads simply never sends the save time:
-the post node only carries `has_viewer_saved: true`, per-edge cursors are
-empty, and `page_info.end_cursor` decodes to an opaque signed blob (verified
-live). As a proxy, the extension records **`savedOrder`** — the feed is
-ordered by save recency, so `savedOrder: 1` = your most recently saved post.
-Exports are sorted by it. It's accurate for a clean top-to-bottom grab; if you
-re-grab later without **Clear**, newly saved posts get appended with *higher*
-numbers, so hit **Clear** first when the exact order matters.
+`savedAt` is always `null` because Threads never sends the save time (the post
+node only carries `has_viewer_saved: true`, per-edge cursors are empty, and
+`page_info.end_cursor` decodes to an opaque signed blob — verified live). As a
+proxy the extension records **`savedOrder`** — the saved feed is ordered by
+save recency, so `savedOrder: 1` = your most recently saved post. Accurate for
+a clean top-to-bottom grab; hit **Clear** first when exact order matters.
 
-Capture matches responses by **content** (the `saved_media` key), not by
-`doc_id`, so Meta's doc_id rotation doesn't break it. If Meta renames the
-connection itself, update `MARKER` in `inject.js` and the field map in
-`lib/normalize.js` (re-derive via DevTools → Network → the request fired when
-the saved page loads a new batch).
+Feed runs record **`feedOrder`** the same way (`1` = top of that feed at grab
+time) plus `feed` (the feed's name) and `feedIndex` (the feed's position in
+the run, used to keep exports in run order). Runs always start from a clean
+slate, so `feedOrder` is always a clean per-feed ranking.
+
+Capture matches responses by **content** (connection key names), not by
+`doc_id`, so Meta's doc_id rotation doesn't break it. If Meta renames a
+connection, update `CONN_KINDS` in `inject.js` (re-derive via DevTools →
+Network → the request fired when the page loads a new batch).
 
 ## Permissions
 
-`storage` (buffer), `downloads` (export), host access to threads.com only.
-No `tabs`, `webRequest`, `scripting`, or instagram.com access. MAIN-world
-injection is declared statically in the manifest (needs Chrome 111+).
+`storage` (buffer), `downloads` (export), `alarms` (watchdog that keeps
+multi-feed runs from hanging when the MV3 service worker sleeps), host access
+to threads.com only. No `tabs`, `webRequest`, `scripting`, or instagram.com
+access — navigation between feeds uses `chrome.tabs.update`, which needs no
+extra permission. MAIN-world injection is declared statically in the manifest
+(needs Chrome 111+).
 
 ## Caveats
 
 - Personal use on your own data; keep it unpublished. Meta's internal GraphQL
   shape **will drift** eventually — see the re-discovery note above.
+- Keep the tab **visible** during a grab: Threads throttles hidden tabs and
+  feed pagination stops (verified live — this is a Threads behavior, not an
+  extension bug).
 - Media are exported as URLs only; fbcdn URLs are signed and **expire after a
   few days**, so download anything you want to keep soon after export.
+- The For you feed is effectively endless — the target count is what stops a
+  grab there.
 - Also worth checking: Meta's **"Download Your Information"** may include
   saved posts as a free win (Settings → Account Center → Your information).
