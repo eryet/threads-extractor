@@ -1,16 +1,21 @@
-# Threads Posts Extractor
+# Threads Extractor
 
-Personal MV3 Chrome extension that exports **your own** Threads data as
-JSON / CSV / Markdown — your saved (bookmarked) posts, the top N posts of any
-feed (For you / Following / Ghost posts / your custom feeds), and your own
-profile (threads + optionally your replies). Everything stays local — no
+Personal MV3 Chrome extension that grabs **your own** Threads data — saved
+(bookmarked) posts, the top N posts of any feed (For you / Following / Ghost
+posts / custom feeds, one by one or up to 4 at once as board columns), and
+profiles (threads + replies) — then lets you browse it all in a local
+dashboard and export JSON / CSV / Markdown. Everything stays local — no
 backend, no accounts, no data leaves your machine.
 
 ## Install (unpacked)
 
 1. Open `chrome://extensions`
 2. Enable **Developer mode** (top right)
-3. **Load unpacked** → select this folder (`threads-saved-extractor`)
+3. **Load unpacked** → select this folder (`threads-extractor`)
+
+Note: Chrome keys an unpacked extension's identity (and its stored data) to
+the folder path — if you rename or move this folder, re-load it and expect an
+empty store (export first if you care about what's captured).
 
 ## Use
 
