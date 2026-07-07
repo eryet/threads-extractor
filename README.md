@@ -80,3 +80,7 @@ corner works fine).
 - Chrome ties an unpacked extension's storage to its folder path: renaming or
   moving the folder resets the store. Export first (and re-import after).
 - Keep it personal and low-volume; this is not a scraping framework.
+
+## License
+
+[MIT](LICENSE)
