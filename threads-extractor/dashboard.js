@@ -956,12 +956,6 @@
     }
   });
 
-  // ---- language ----
-
-  $('langSel').addEventListener('change', () => {
-    TSEI18n.setLang($('langSel').value).then(() => location.reload());
-  });
-
   // ---- init ----
 
   (async () => {
@@ -980,10 +974,6 @@
         update();
       },
     });
-    try {
-      const got = await chrome.storage.local.get('tse_lang');
-      $('langSel').value = got.tse_lang || 'auto';
-    } catch (_) {}
     try { setLayout(localStorage.getItem('tse_dash_layout') || 'grid'); } catch (_) {}
     await Promise.all([loadPosts(), loadLive()]);
     update();

@@ -1,0 +1,500 @@
+{
+  "appName": {
+    "message": "Threads Extractor"
+  },
+  "appDesc": {
+    "message": "Grab your saved posts, liked posts, feeds and profiles from Threads into a local dashboard. Export JSON/CSV/Markdown. 100% local."
+  },
+  "locale_tag": {
+    "message": "en"
+  },
+  "tab_saved": {
+    "message": "Saved"
+  },
+  "tab_liked": {
+    "message": "Liked"
+  },
+  "tab_feeds": {
+    "message": "Feeds"
+  },
+  "tab_profile": {
+    "message": "Profile"
+  },
+  "head_export": {
+    "message": "Export"
+  },
+  "btn_dashboard": {
+    "message": "Dashboard ↗"
+  },
+  "btn_stop": {
+    "message": "Stop"
+  },
+  "lbl_saved_captured": {
+    "message": "saved posts captured"
+  },
+  "btn_grab_saved": {
+    "message": "Grab all saved"
+  },
+  "btn_clear_saved": {
+    "message": "Clear captured data"
+  },
+  "st_ready": {
+    "message": "ready"
+  },
+  "st_grabbing_saved": {
+    "message": "grabbing… scrolling the saved feed"
+  },
+  "st_saved_done": {
+    "message": "done — reached the end of the saved feed"
+  },
+  "st_posts_captured": {
+    "message": "posts captured"
+  },
+  "lbl_liked_captured": {
+    "message": "liked posts captured"
+  },
+  "btn_grab_liked": {
+    "message": "Grab all liked"
+  },
+  "btn_clear_liked": {
+    "message": "Clear liked data"
+  },
+  "st_grabbing_liked": {
+    "message": "grabbing… scrolling your liked posts"
+  },
+  "st_liked_done": {
+    "message": "done — reached the end of your liked posts"
+  },
+  "lbl_max_posts": {
+    "message": "Max posts (blank = all)"
+  },
+  "lbl_until_date": {
+    "message": "Stop at posts older than"
+  },
+  "st_stopped_limit": {
+    "message": "stopped — reached the post limit"
+  },
+  "st_stopped_date": {
+    "message": "stopped — reached posts older than the date"
+  },
+  "lbl_feed_captured": {
+    "message": "feed posts captured"
+  },
+  "st_select_feeds": {
+    "message": "select feeds, then run"
+  },
+  "pick_feeds": {
+    "message": "Feeds"
+  },
+  "link_all": {
+    "message": "all"
+  },
+  "link_none": {
+    "message": "none"
+  },
+  "sel_count": {
+    "message": "{n} selected"
+  },
+  "hint_custom_feeds": {
+    "message": "open any feed page once so your custom feeds show up here"
+  },
+  "lbl_target": {
+    "message": "Posts per feed"
+  },
+  "btn_batch": {
+    "message": "Grab in batch · 4 at a time"
+  },
+  "btn_onebyone": {
+    "message": "Grab one by one"
+  },
+  "hint_batch": {
+    "message": "batch grabs every selected feed, opening them side by side 4 at a time (in waves) · one by one visits each feed page in turn — either way, keep the tab visible"
+  },
+  "btn_stop_run": {
+    "message": "Stop run"
+  },
+  "btn_clear_feed": {
+    "message": "Clear feed data"
+  },
+  "group_builtin": {
+    "message": "Built-in"
+  },
+  "group_custom": {
+    "message": "Your custom feeds"
+  },
+  "st_feed_progress": {
+    "message": "feed {i} of {n} — {name} · {cur}/{target}"
+  },
+  "st_columns_progress": {
+    "message": "board columns — {done}/{n} feeds done · {count} posts"
+  },
+  "st_columns_wave": {
+    "message": "batch {w}/{ws} — {done}/{n} feeds done · {count} posts total"
+  },
+  "st_columns_finding": {
+    "message": "board columns — finding feed columns…"
+  },
+  "st_feed_done": {
+    "message": "done — {count} posts from {n} feed(s)"
+  },
+  "st_could_not_start": {
+    "message": "could not start"
+  },
+  "lbl_prof_captured": {
+    "message": "profile posts captured"
+  },
+  "ph_handle": {
+    "message": "my profile (leave blank)"
+  },
+  "btn_grab_threads": {
+    "message": "Grab threads"
+  },
+  "btn_grab_replies": {
+    "message": "Grab replies"
+  },
+  "hint_profile": {
+    "message": "blank = your own profile · replies include the full post replied to"
+  },
+  "btn_clear_prof": {
+    "message": "Clear profile data"
+  },
+  "st_prof_ready": {
+    "message": "grab a profile — yours or anyone's"
+  },
+  "st_prof_grabbing": {
+    "message": "grabbing {who} {stage}… {n} so far"
+  },
+  "who_my": {
+    "message": "my"
+  },
+  "stage_threads": {
+    "message": "threads"
+  },
+  "stage_replies": {
+    "message": "replies"
+  },
+  "n_threads": {
+    "message": "{n} threads"
+  },
+  "n_replies": {
+    "message": "{n} replies"
+  },
+  "st_prof_multi": {
+    "message": "{count} posts across {n} profiles"
+  },
+  "lang_label": {
+    "message": "Language"
+  },
+  "dash_title": {
+    "message": "Dashboard"
+  },
+  "sec_source": {
+    "message": "Source"
+  },
+  "sec_feed": {
+    "message": "Feed"
+  },
+  "sec_profile": {
+    "message": "Profile"
+  },
+  "sec_authors": {
+    "message": "Top authors"
+  },
+  "sec_export": {
+    "message": "Export this view"
+  },
+  "sec_import": {
+    "message": "Import"
+  },
+  "sec_delete": {
+    "message": "Delete"
+  },
+  "btn_delete_shown": {
+    "message": "Delete shown posts…"
+  },
+  "confirm_delete": {
+    "message": "Delete the {n} posts the current filters show? This can't be undone."
+  },
+  "confirm_del_post": {
+    "message": "Delete this post by {who}? This can't be undone."
+  },
+  "dlg_delete_title": {
+    "message": "Delete"
+  },
+  "btn_cancel": {
+    "message": "Cancel"
+  },
+  "btn_delete": {
+    "message": "Delete"
+  },
+  "title_post_actions": {
+    "message": "post actions"
+  },
+  "menu_open_post": {
+    "message": "Open on Threads"
+  },
+  "menu_copy_link": {
+    "message": "Copy link"
+  },
+  "menu_copied": {
+    "message": "Link copied"
+  },
+  "menu_delete_post": {
+    "message": "Delete post…"
+  },
+  "note_delete": {
+    "message": "Removes exactly what the current filters show — narrow it down with a feed, profile, author, date range or search first. Can't be undone; export first if unsure."
+  },
+  "link_clear": {
+    "message": "clear"
+  },
+  "nav_all": {
+    "message": "All posts"
+  },
+  "nav_saved": {
+    "message": "Saved"
+  },
+  "nav_liked": {
+    "message": "Liked"
+  },
+  "nav_feeds": {
+    "message": "Feeds"
+  },
+  "nav_profiles": {
+    "message": "Profiles"
+  },
+  "chip_threads": {
+    "message": "Threads"
+  },
+  "chip_replies": {
+    "message": "Replies"
+  },
+  "note_export": {
+    "message": "Exports exactly what the current filters show. Media URLs are signed by Meta's CDN and expire after a few days."
+  },
+  "btn_import": {
+    "message": "Import export JSON…"
+  },
+  "note_import": {
+    "message": "Restore posts from earlier JSON exports (saved / feeds / profile — multiple files ok). Duplicates are skipped; imported feed posts survive future runs."
+  },
+  "imp_importing": {
+    "message": "importing {n} posts…"
+  },
+  "imp_done": {
+    "message": "imported {n} posts"
+  },
+  "imp_dupes": {
+    "message": " · {n} duplicates skipped"
+  },
+  "imp_badfiles": {
+    "message": " · {n} unreadable file(s)"
+  },
+  "imp_none": {
+    "message": "no posts found in the selected file(s)"
+  },
+  "imp_unreadable": {
+    "message": "could not read those files — expected JSON exports from this extension"
+  },
+  "ph_search": {
+    "message": "Search text, @handle, name…  ( / )"
+  },
+  "opt_all_posts": {
+    "message": "All posts"
+  },
+  "opt_with_media": {
+    "message": "With media"
+  },
+  "opt_text_only": {
+    "message": "Text only"
+  },
+  "metric_replies": {
+    "message": "💬 replies"
+  },
+  "metric_likes": {
+    "message": "❤️ likes"
+  },
+  "metric_reposts": {
+    "message": "🔁 reposts"
+  },
+  "metric_shares": {
+    "message": "📤 shares"
+  },
+  "opt_any": {
+    "message": "any"
+  },
+  "title_min_metric": {
+    "message": "engagement filter — hide posts below the threshold"
+  },
+  "title_date_range": {
+    "message": "posted between (takenAt)"
+  },
+  "title_clear_dates": {
+    "message": "clear date range"
+  },
+  "btn_date_range": {
+    "message": "Date range"
+  },
+  "preset_today": {
+    "message": "Today"
+  },
+  "preset_7d": {
+    "message": "Last 7 days"
+  },
+  "preset_30d": {
+    "message": "Last 30 days"
+  },
+  "preset_90d": {
+    "message": "Last 90 days"
+  },
+  "preset_this_month": {
+    "message": "This month"
+  },
+  "preset_this_year": {
+    "message": "This year"
+  },
+  "preset_all": {
+    "message": "All time"
+  },
+  "cal_hint_start": {
+    "message": "pick a start date"
+  },
+  "cal_hint_end": {
+    "message": "pick an end date — click a day"
+  },
+  "opt_sort_capture": {
+    "message": "Capture order (asc)"
+  },
+  "opt_sort_capture_desc": {
+    "message": "Capture order (desc)"
+  },
+  "opt_sort_new": {
+    "message": "Newest posted"
+  },
+  "opt_sort_old": {
+    "message": "Oldest posted"
+  },
+  "opt_sort_likes": {
+    "message": "Most liked"
+  },
+  "opt_sort_likes_asc": {
+    "message": "Least liked"
+  },
+  "opt_sort_replies": {
+    "message": "Most replied"
+  },
+  "opt_sort_replies_asc": {
+    "message": "Least replied"
+  },
+  "opt_sort_reposts": {
+    "message": "Most reposted"
+  },
+  "opt_sort_reposts_asc": {
+    "message": "Least reposted"
+  },
+  "opt_sort_shares": {
+    "message": "Most shared"
+  },
+  "opt_sort_shares_asc": {
+    "message": "Least shared"
+  },
+  "title_grid": {
+    "message": "Grid"
+  },
+  "title_list": {
+    "message": "List"
+  },
+  "title_compact": {
+    "message": "Compact"
+  },
+  "shown_posts": {
+    "message": "{n} posts"
+  },
+  "shown_of": {
+    "message": "of {n}"
+  },
+  "shown_hidden_metric": {
+    "message": "· {n} hidden (no data for this metric — older capture, re-grab)"
+  },
+  "empty_no_match": {
+    "message": "Nothing matches the current filters."
+  },
+  "empty_no_capture": {
+    "message": "Nothing captured yet.<br /><b>Grab</b> saved posts, feeds, or a profile from the extension popup — results show up here live."
+  },
+  "more": {
+    "message": "more"
+  },
+  "less": {
+    "message": "less"
+  },
+  "open_post": {
+    "message": "open ↗"
+  },
+  "replying_to": {
+    "message": "↩ replying to "
+  },
+  "badge_saved": {
+    "message": "saved"
+  },
+  "badge_liked": {
+    "message": "liked"
+  },
+  "badge_thread": {
+    "message": "thread"
+  },
+  "badge_reply": {
+    "message": "reply"
+  },
+  "title_filter_author": {
+    "message": "filter by this author"
+  },
+  "video_tile": {
+    "message": "video · open post"
+  },
+  "title_video_tile": {
+    "message": "video — open the post on Threads"
+  },
+  "media_expired": {
+    "message": "media expired"
+  },
+  "live_idle": {
+    "message": "Threads Extractor"
+  },
+  "live_feeds": {
+    "message": "grabbing feeds… ({p})"
+  },
+  "live_profile": {
+    "message": "grabbing @{h} {stage}…"
+  },
+  "live_saved": {
+    "message": "grabbing saved posts…"
+  },
+  "live_liked": {
+    "message": "grabbing liked posts…"
+  },
+  "banner_running": {
+    "message": "Auto-grab running"
+  },
+  "banner_saved": {
+    "message": "grabbing your saved posts"
+  },
+  "banner_liked": {
+    "message": "grabbing your liked posts"
+  },
+  "banner_feed": {
+    "message": "grabbing a feed"
+  },
+  "banner_profile": {
+    "message": "grabbing a profile"
+  },
+  "banner_columns": {
+    "message": "grabbing feeds in parallel"
+  },
+  "banner_generic": {
+    "message": "grabbing"
+  },
+  "banner_tail": {
+    "message": "{label} — don't use this tab, keep it visible · stop anytime from the extension popup"
+  }
+}

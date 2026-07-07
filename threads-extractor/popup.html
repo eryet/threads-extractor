@@ -299,21 +299,6 @@
 
     .pane { display: none; }
     .pane.active { display: block; }
-
-    .langRow {
-      display: flex; align-items: center; gap: 6px;
-      justify-content: flex-end;
-      margin-top: 10px;
-      font-size: 10.5px; color: var(--faint);
-    }
-    .langRow select {
-      border: 1px solid var(--border);
-      border-radius: 7px;
-      background: var(--card);
-      color: var(--muted);
-      font-size: 10.5px;
-      padding: 3px 5px;
-    }
   </style>
 </head>
 <body>
@@ -456,15 +441,6 @@
       <button id="btnProfMd" class="act" disabled>MD</button>
     </div>
     <button id="btnProfClear" class="act ghost" data-i18n="btn_clear_prof" disabled>Clear profile data</button>
-  </div>
-
-  <div class="langRow">
-    <span data-i18n="lang_label">Language</span>
-    <select id="langSel">
-      <option value="auto">Auto</option>
-      <option value="en">English</option>
-      <option value="zh_TW">繁體中文</option>
-    </select>
   </div>
 
   <script src="lib/i18n.js"></script>

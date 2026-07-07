@@ -1,0 +1,500 @@
+{
+  "appName": {
+    "message": "Threads Extractor"
+  },
+  "appDesc": {
+    "message": "把你在 Threads 的儲存貼文、按讚貼文、動態與個人檔案擷取到本機儀表板，可匯出 JSON/CSV/Markdown。完全在本機執行。"
+  },
+  "locale_tag": {
+    "message": "zh_TW"
+  },
+  "tab_saved": {
+    "message": "已儲存"
+  },
+  "tab_liked": {
+    "message": "已按讚"
+  },
+  "tab_feeds": {
+    "message": "動態"
+  },
+  "tab_profile": {
+    "message": "個人檔案"
+  },
+  "head_export": {
+    "message": "匯出"
+  },
+  "btn_dashboard": {
+    "message": "儀表板 ↗"
+  },
+  "btn_stop": {
+    "message": "停止"
+  },
+  "lbl_saved_captured": {
+    "message": "已擷取的儲存貼文"
+  },
+  "btn_grab_saved": {
+    "message": "擷取全部儲存貼文"
+  },
+  "btn_clear_saved": {
+    "message": "清除擷取資料"
+  },
+  "st_ready": {
+    "message": "就緒"
+  },
+  "st_grabbing_saved": {
+    "message": "擷取中…正在捲動儲存貼文"
+  },
+  "st_saved_done": {
+    "message": "完成 — 已到達儲存動態底部"
+  },
+  "st_posts_captured": {
+    "message": "已擷取貼文"
+  },
+  "lbl_liked_captured": {
+    "message": "已擷取的按讚貼文"
+  },
+  "btn_grab_liked": {
+    "message": "擷取全部按讚貼文"
+  },
+  "btn_clear_liked": {
+    "message": "清除按讚資料"
+  },
+  "st_grabbing_liked": {
+    "message": "擷取中…正在捲動按讚貼文"
+  },
+  "st_liked_done": {
+    "message": "完成 — 已到達按讚貼文底部"
+  },
+  "lbl_max_posts": {
+    "message": "最多貼文數（留空＝全部）"
+  },
+  "lbl_until_date": {
+    "message": "停在早於此日期的貼文"
+  },
+  "st_stopped_limit": {
+    "message": "已停止 — 達到貼文數上限"
+  },
+  "st_stopped_date": {
+    "message": "已停止 — 到達早於指定日期的貼文"
+  },
+  "lbl_feed_captured": {
+    "message": "已擷取的動態貼文"
+  },
+  "st_select_feeds": {
+    "message": "選擇動態後開始"
+  },
+  "pick_feeds": {
+    "message": "動態"
+  },
+  "link_all": {
+    "message": "全選"
+  },
+  "link_none": {
+    "message": "全不選"
+  },
+  "sel_count": {
+    "message": "已選 {n} 個"
+  },
+  "hint_custom_feeds": {
+    "message": "開啟任一動態頁面一次，自訂動態就會出現在這裡"
+  },
+  "lbl_target": {
+    "message": "每個動態的貼文數"
+  },
+  "btn_batch": {
+    "message": "批次擷取 · 每批 4 個"
+  },
+  "btn_onebyone": {
+    "message": "逐一擷取"
+  },
+  "hint_batch": {
+    "message": "批次：擷取所有所選動態，每批並排開啟 4 個（分批進行）· 逐一：依序造訪每個動態頁面 — 兩種方式都需保持分頁可見"
+  },
+  "btn_stop_run": {
+    "message": "停止執行"
+  },
+  "btn_clear_feed": {
+    "message": "清除動態資料"
+  },
+  "group_builtin": {
+    "message": "內建"
+  },
+  "group_custom": {
+    "message": "你的自訂動態"
+  },
+  "st_feed_progress": {
+    "message": "第 {i}/{n} 個動態 — {name} · {cur}/{target}"
+  },
+  "st_columns_progress": {
+    "message": "看板欄位 — {done}/{n} 個動態完成 · {count} 篇貼文"
+  },
+  "st_columns_wave": {
+    "message": "第 {w}/{ws} 批 — {done}/{n} 個動態完成 · 共 {count} 篇貼文"
+  },
+  "st_columns_finding": {
+    "message": "看板欄位 — 尋找動態欄位中…"
+  },
+  "st_feed_done": {
+    "message": "完成 — {n} 個動態共 {count} 篇貼文"
+  },
+  "st_could_not_start": {
+    "message": "無法開始"
+  },
+  "lbl_prof_captured": {
+    "message": "已擷取的個人檔案貼文"
+  },
+  "ph_handle": {
+    "message": "我的個人檔案（留空）"
+  },
+  "btn_grab_threads": {
+    "message": "擷取串文"
+  },
+  "btn_grab_replies": {
+    "message": "擷取回覆"
+  },
+  "hint_profile": {
+    "message": "留空＝自己的個人檔案 · 回覆會包含被回覆的完整貼文"
+  },
+  "btn_clear_prof": {
+    "message": "清除個人檔案資料"
+  },
+  "st_prof_ready": {
+    "message": "擷取個人檔案 — 你的或任何人的"
+  },
+  "st_prof_grabbing": {
+    "message": "正在擷取 {who} 的{stage}… 目前 {n} 篇"
+  },
+  "who_my": {
+    "message": "我"
+  },
+  "stage_threads": {
+    "message": "串文"
+  },
+  "stage_replies": {
+    "message": "回覆"
+  },
+  "n_threads": {
+    "message": "{n} 篇串文"
+  },
+  "n_replies": {
+    "message": "{n} 篇回覆"
+  },
+  "st_prof_multi": {
+    "message": "{n} 個帳號共 {count} 篇貼文"
+  },
+  "lang_label": {
+    "message": "語言"
+  },
+  "dash_title": {
+    "message": "儀表板"
+  },
+  "sec_source": {
+    "message": "來源"
+  },
+  "sec_feed": {
+    "message": "動態"
+  },
+  "sec_profile": {
+    "message": "個人檔案"
+  },
+  "sec_authors": {
+    "message": "熱門作者"
+  },
+  "sec_export": {
+    "message": "匯出目前檢視"
+  },
+  "sec_import": {
+    "message": "匯入"
+  },
+  "sec_delete": {
+    "message": "刪除"
+  },
+  "btn_delete_shown": {
+    "message": "刪除顯示中的貼文…"
+  },
+  "confirm_delete": {
+    "message": "確定刪除目前篩選顯示的 {n} 篇貼文？刪除後無法復原。"
+  },
+  "confirm_del_post": {
+    "message": "確定刪除 {who} 的這篇貼文？刪除後無法復原。"
+  },
+  "dlg_delete_title": {
+    "message": "刪除"
+  },
+  "btn_cancel": {
+    "message": "取消"
+  },
+  "btn_delete": {
+    "message": "刪除"
+  },
+  "title_post_actions": {
+    "message": "貼文動作"
+  },
+  "menu_open_post": {
+    "message": "在 Threads 開啟"
+  },
+  "menu_copy_link": {
+    "message": "複製連結"
+  },
+  "menu_copied": {
+    "message": "已複製連結"
+  },
+  "menu_delete_post": {
+    "message": "刪除貼文…"
+  },
+  "note_delete": {
+    "message": "只會刪除目前篩選顯示的貼文 — 可先用動態、個人檔案、作者、日期範圍或搜尋來縮小範圍。刪除後無法復原；不確定時請先匯出。"
+  },
+  "link_clear": {
+    "message": "清除"
+  },
+  "nav_all": {
+    "message": "全部貼文"
+  },
+  "nav_saved": {
+    "message": "已儲存"
+  },
+  "nav_liked": {
+    "message": "已按讚"
+  },
+  "nav_feeds": {
+    "message": "動態"
+  },
+  "nav_profiles": {
+    "message": "個人檔案"
+  },
+  "chip_threads": {
+    "message": "串文"
+  },
+  "chip_replies": {
+    "message": "回覆"
+  },
+  "note_export": {
+    "message": "匯出內容即為目前篩選所顯示的貼文。媒體網址由 Meta CDN 簽章，數天後就會失效。"
+  },
+  "btn_import": {
+    "message": "匯入先前匯出的 JSON…"
+  },
+  "note_import": {
+    "message": "從先前匯出的 JSON 還原貼文（儲存／動態／個人檔案，可多檔）。重複貼文會略過；匯入的動態貼文不會被之後的擷取清除。"
+  },
+  "imp_importing": {
+    "message": "匯入 {n} 篇貼文中…"
+  },
+  "imp_done": {
+    "message": "已匯入 {n} 篇貼文"
+  },
+  "imp_dupes": {
+    "message": " · 略過 {n} 篇重複"
+  },
+  "imp_badfiles": {
+    "message": " · {n} 個檔案無法讀取"
+  },
+  "imp_none": {
+    "message": "所選檔案中找不到貼文"
+  },
+  "imp_unreadable": {
+    "message": "無法讀取這些檔案 — 需為本擴充功能匯出的 JSON"
+  },
+  "ph_search": {
+    "message": "搜尋內文、@帳號、名稱…（/）"
+  },
+  "opt_all_posts": {
+    "message": "全部貼文"
+  },
+  "opt_with_media": {
+    "message": "有媒體"
+  },
+  "opt_text_only": {
+    "message": "純文字"
+  },
+  "metric_replies": {
+    "message": "💬 回覆"
+  },
+  "metric_likes": {
+    "message": "❤️ 讚"
+  },
+  "metric_reposts": {
+    "message": "🔁 轉發"
+  },
+  "metric_shares": {
+    "message": "📤 分享"
+  },
+  "opt_any": {
+    "message": "不限"
+  },
+  "title_min_metric": {
+    "message": "互動數篩選 — 隱藏低於門檻的貼文"
+  },
+  "title_date_range": {
+    "message": "發佈日期範圍"
+  },
+  "title_clear_dates": {
+    "message": "清除日期範圍"
+  },
+  "btn_date_range": {
+    "message": "日期範圍"
+  },
+  "preset_today": {
+    "message": "今天"
+  },
+  "preset_7d": {
+    "message": "過去 7 天"
+  },
+  "preset_30d": {
+    "message": "過去 30 天"
+  },
+  "preset_90d": {
+    "message": "過去 90 天"
+  },
+  "preset_this_month": {
+    "message": "本月"
+  },
+  "preset_this_year": {
+    "message": "今年"
+  },
+  "preset_all": {
+    "message": "全部時間"
+  },
+  "cal_hint_start": {
+    "message": "選擇開始日期"
+  },
+  "cal_hint_end": {
+    "message": "選擇結束日期 — 點選日期"
+  },
+  "opt_sort_capture": {
+    "message": "擷取順序（正序）"
+  },
+  "opt_sort_capture_desc": {
+    "message": "擷取順序（倒序）"
+  },
+  "opt_sort_new": {
+    "message": "最新發佈"
+  },
+  "opt_sort_old": {
+    "message": "最舊發佈"
+  },
+  "opt_sort_likes": {
+    "message": "最多讚"
+  },
+  "opt_sort_likes_asc": {
+    "message": "最少讚"
+  },
+  "opt_sort_replies": {
+    "message": "最多回覆"
+  },
+  "opt_sort_replies_asc": {
+    "message": "最少回覆"
+  },
+  "opt_sort_reposts": {
+    "message": "最多轉發"
+  },
+  "opt_sort_reposts_asc": {
+    "message": "最少轉發"
+  },
+  "opt_sort_shares": {
+    "message": "最多分享"
+  },
+  "opt_sort_shares_asc": {
+    "message": "最少分享"
+  },
+  "title_grid": {
+    "message": "格狀"
+  },
+  "title_list": {
+    "message": "列表"
+  },
+  "title_compact": {
+    "message": "精簡"
+  },
+  "shown_posts": {
+    "message": "{n} 篇貼文"
+  },
+  "shown_of": {
+    "message": "（共 {n} 篇）"
+  },
+  "shown_hidden_metric": {
+    "message": "· 隱藏 {n} 篇（此指標無資料 — 較舊的擷取，請重新擷取）"
+  },
+  "empty_no_match": {
+    "message": "沒有符合目前篩選條件的貼文。"
+  },
+  "empty_no_capture": {
+    "message": "尚未擷取任何內容。<br />請從擴充功能視窗<b>擷取</b>儲存貼文、動態或個人檔案 — 結果會即時顯示在這裡。"
+  },
+  "more": {
+    "message": "更多"
+  },
+  "less": {
+    "message": "收合"
+  },
+  "open_post": {
+    "message": "開啟 ↗"
+  },
+  "replying_to": {
+    "message": "↩ 回覆 "
+  },
+  "badge_saved": {
+    "message": "已儲存"
+  },
+  "badge_liked": {
+    "message": "已按讚"
+  },
+  "badge_thread": {
+    "message": "串文"
+  },
+  "badge_reply": {
+    "message": "回覆"
+  },
+  "title_filter_author": {
+    "message": "以此作者篩選"
+  },
+  "video_tile": {
+    "message": "影片 · 開啟貼文"
+  },
+  "title_video_tile": {
+    "message": "影片 — 在 Threads 開啟貼文"
+  },
+  "media_expired": {
+    "message": "媒體已過期"
+  },
+  "live_idle": {
+    "message": "Threads Extractor"
+  },
+  "live_feeds": {
+    "message": "擷取動態中…（{p}）"
+  },
+  "live_profile": {
+    "message": "正在擷取 @{h} 的{stage}…"
+  },
+  "live_saved": {
+    "message": "擷取儲存貼文中…"
+  },
+  "live_liked": {
+    "message": "擷取按讚貼文中…"
+  },
+  "banner_running": {
+    "message": "自動擷取進行中"
+  },
+  "banner_saved": {
+    "message": "正在擷取你的儲存貼文"
+  },
+  "banner_liked": {
+    "message": "正在擷取你按讚的貼文"
+  },
+  "banner_feed": {
+    "message": "正在擷取動態"
+  },
+  "banner_profile": {
+    "message": "正在擷取個人檔案"
+  },
+  "banner_columns": {
+    "message": "正在同時擷取多個動態"
+  },
+  "banner_generic": {
+    "message": "擷取中"
+  },
+  "banner_tail": {
+    "message": "{label} — 請勿操作此分頁並保持可見 · 隨時可從擴充功能視窗停止"
+  }
+}

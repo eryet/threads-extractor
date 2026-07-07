@@ -483,15 +483,10 @@
   els.profMd.addEventListener('click', async () =>
     download(TSEExport.toMarkdown(await getPosts('tse_profile_posts'), 'profile'), 'text/markdown', 'threads-profile', 'md'));
 
-  // ---- language ----
-  $('langSel').addEventListener('change', () => {
-    TSEI18n.setLang($('langSel').value).then(() => location.reload());
-  });
-
   // resolve language, restore last-used selection + target, then poll
   TSEI18n.init().then(() => {
     TSEI18n.apply();
-    return chrome.storage.local.get(['tse_feed_prefs', 'tse_grab_prefs', 'tse_lang']);
+    return chrome.storage.local.get(['tse_feed_prefs', 'tse_grab_prefs']);
   }).then((got) => {
     const prefs = got.tse_feed_prefs || {};
     selected = new Set(prefs.selected || []);
@@ -505,7 +500,6 @@
       if (gp.liked.limit) els.likedLimit.value = gp.liked.limit;
       if (gp.liked.until) els.likedUntil.value = gp.liked.until;
     }
-    $('langSel').value = got.tse_lang || 'auto';
   }).catch(() => {}).finally(() => {
     refresh();
     pollTimer = setInterval(refresh, 800);
