@@ -282,6 +282,35 @@
     try { return /\.mp4($|\?)/.test(new URL(url).pathname + '?'); } catch (_) { return /\.mp4/.test(url); }
   }
 
+  // Lazy image loading, replacing native loading="lazy": Chrome's lazy
+  // threshold is ~3000px, so with 900px of virtual-list overscan every
+  // rendered card fetched at once and fast scrolls flooded the network and
+  // decoder. Instead: fetch only within 600px of the viewport, at most
+  // MAX_LOADS in flight, nearest-first via the observer.
+  const MAX_LOADS = 6;
+  let activeLoads = 0;
+  const loadQueue = [];
+  const imgIO = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (!e.isIntersecting) continue;
+      imgIO.unobserve(e.target);
+      loadQueue.push(e.target);
+    }
+    pumpLoads();
+  }, { root: document.getElementById('scroller'), rootMargin: '600px 0px' });
+
+  function pumpLoads() {
+    while (activeLoads < MAX_LOADS && loadQueue.length) {
+      const el = loadQueue.shift();
+      if (!el.isConnected) { imgIO.observe(el); continue; } // scrolled out of the window before loading — retry when it's back
+      activeLoads++;
+      const done = () => { activeLoads--; pumpLoads(); };
+      el.addEventListener('load', done, { once: true });
+      el.addEventListener('error', done, { once: true });
+      el.src = el.dataset.src;
+    }
+  }
+
   function mediaEl(url, postUrl) {
     if (isVideo(url)) {
       // the signed video URLs won't play outside Threads' own player —
@@ -300,9 +329,10 @@
       return ph;
     }
     const el = document.createElement('img');
-    el.src = url;
-    el.loading = 'lazy';
+    el.dataset.src = url;
     el.decoding = 'async'; // never decode on the scroll-critical path
+    el.addEventListener('load', () => el.classList.add('ld'), { once: true });
+    imgIO.observe(el);
     el.addEventListener('click', () => window.open(url, '_blank'));
     el.addEventListener('error', () => {
       const dead = document.createElement('div');
@@ -740,8 +770,19 @@
     menuEl.className = 'cardMenu';
     menuEl.__anchor = anchor;
 
-    const open = document.createElement('button');
-    open.textContent = '↗ ' + t('menu_open_post');
+    // fixed-width icon column so the labels line up
+    function menuBtn(icon, label) {
+      const b = document.createElement('button');
+      const i = document.createElement('span');
+      i.className = 'mi';
+      i.textContent = icon;
+      const l = document.createElement('span');
+      l.textContent = label;
+      b.append(i, l);
+      return b;
+    }
+
+    const open = menuBtn('↗', t('menu_open_post'));
     if (p.url) {
       open.addEventListener('click', () => {
         window.open(p.url, '_blank', 'noreferrer');
@@ -752,12 +793,12 @@
     }
     menuEl.appendChild(open);
 
-    const copy = document.createElement('button');
-    copy.textContent = '🔗 ' + t('menu_copy_link');
+    const copy = menuBtn('🔗', t('menu_copy_link'));
     if (p.url) {
       copy.addEventListener('click', async () => {
         try { await navigator.clipboard.writeText(p.url); } catch (_) {}
-        copy.textContent = '✓ ' + t('menu_copied');
+        copy.firstChild.textContent = '✓';
+        copy.lastChild.textContent = t('menu_copied');
         setTimeout(closeCardMenu, 650);
       });
     } else {
@@ -765,9 +806,8 @@
     }
     menuEl.appendChild(copy);
 
-    const del = document.createElement('button');
+    const del = menuBtn('🗑', t('menu_delete_post'));
     del.className = 'menuDanger';
-    del.textContent = '🗑 ' + t('menu_delete_post');
     del.addEventListener('click', async () => {
       closeCardMenu();
       const who = (p.author && p.author.handle) || '@unknown';

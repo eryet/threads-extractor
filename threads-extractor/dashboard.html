@@ -381,7 +381,8 @@
       padding: 4px;
     }
     .cardMenu button {
-      display: block; width: 100%;
+      display: flex; align-items: center; gap: 8px;
+      width: 100%;
       border: 0; border-radius: 7px;
       background: transparent;
       color: var(--text);
@@ -391,6 +392,7 @@
       cursor: pointer;
       white-space: nowrap;
     }
+    .cardMenu button .mi { flex: none; width: 17px; text-align: center; }
     .cardMenu button:hover { background: #2e2e2e; }
     .cardMenu button:disabled { color: var(--faint); cursor: default; background: transparent; }
     .cardMenu .menuDanger { color: #d9928c; }
@@ -493,6 +495,9 @@
       background: #0c0c0c; border-radius: 6px;
       display: block; cursor: pointer;
     }
+    /* lazy-loaded: dark placeholder until the fetch lands, then fade in */
+    .mediaWrap img { opacity: 0; transition: opacity 0.18s ease; }
+    .mediaWrap img.ld { opacity: 1; }
     .mediaWrap.single img, .mediaWrap.single video { height: 280px; }
     .mediaDead {
       height: 60px; border-radius: 6px;
