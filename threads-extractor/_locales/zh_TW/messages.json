@@ -496,5 +496,14 @@
   },
   "banner_tail": {
     "message": "{label} — 請勿操作此分頁並保持可見 · 隨時可從擴充功能視窗停止"
+  },
+  "storage_used": {
+    "message": "儲存空間：{used} / {quota} MB"
+  },
+  "storage_low": {
+    "message": "空間即將用盡 — 請匯出並刪除舊貼文"
+  },
+  "storage_full": {
+    "message": "空間已滿 — 擷取會停止；請刪除舊貼文"
   }
 }

@@ -9,6 +9,9 @@ importScripts('lib/normalize.js');
 
 let mem = null;              // in-memory mirror of storage
 let persistQueue = Promise.resolve(); // serializes writes
+let storageFull = false;     // last persist hit the quota — surfaced via GET_STATE
+
+const STORAGE_FULL_ERR = 'Storage is full — capture stopped. Export, then delete old posts to free space.';
 
 const WATCHDOG = 'tse-watchdog';
 const STALL_MS = 60000;      // no progress for this long => skip to next feed
@@ -88,9 +91,56 @@ function persist() {
       tse_feed_posts: mem.feedPosts, tse_feed_state: mem.feedState,
       tse_feed_list: mem.feedList,
       tse_profile_posts: mem.profilePosts, tse_profile_state: mem.profileState,
-    })
+    }).then(
+      () => { storageFull = false; },
+      () => {
+        // Quota hit. Swallow the rejection — a rejected tail would silently
+        // skip every later persist — and stop the grabs so scrolling doesn't
+        // keep capturing into the void. The error state only lives in mem
+        // (it can't be persisted while over quota), but GET_STATE reads mem,
+        // so the popup still shows it.
+        storageFull = true;
+        haltAllGrabs(STORAGE_FULL_ERR);
+      }
+    )
   );
   return persistQueue;
+}
+
+function haltAllGrabs(err) {
+  if (!mem) return;
+  for (const st of [mem.state, mem.likedState]) {
+    if (st.grabbing) { st.grabbing = false; st.lastError = err; }
+  }
+  if (mem.feedState.running) { mem.feedState.running = false; mem.feedState.lastError = err; }
+  if (mem.profileState.running) { mem.profileState.running = false; mem.profileState.lastError = err; }
+  chrome.tabs.query({ url: ['https://www.threads.com/*', 'https://threads.com/*'] }, (tabs) => {
+    for (const tb of tabs || []) chrome.tabs.sendMessage(tb.id, { type: 'STOP_SCROLL' }).catch(() => {});
+  });
+}
+
+// tse_errlog: ring buffer of the last unexpected errors ({at, where, msg}),
+// persisted so failures survive the SW's ~30s idle teardown. Inspect from any
+// extension page devtools: chrome.storage.local.get('tse_errlog')
+const ERRLOG_MAX = 20;
+function logError(where, e) {
+  const entry = { at: new Date().toISOString(), where, msg: String((e && e.message) || e) };
+  chrome.storage.local.get('tse_errlog').then((got) => {
+    const log = Array.isArray(got.tse_errlog) ? got.tse_errlog : [];
+    log.push(entry);
+    while (log.length > ERRLOG_MAX) log.shift();
+    return chrome.storage.local.set({ tse_errlog: log });
+  }).catch(() => {});
+}
+
+// surface an unexpected error on whichever mode is mid-grab (popup shows it)
+function stampActiveError(err) {
+  if (!mem) return;
+  for (const st of [mem.state, mem.likedState]) {
+    if (st.grabbing) st.lastError = err;
+  }
+  if (mem.feedState.running) mem.feedState.lastError = err;
+  if (mem.profileState.running) mem.profileState.lastError = err;
 }
 
 function normPath(p) {
@@ -283,20 +333,23 @@ function checkGrabLimits(st, msg, added, senderTabId) {
 async function handleSavedBatch(msg, sender) {
   const store = await getStore();
   const now = new Date().toISOString();
-  let added = 0;
+  let added = 0, bad = 0;
   for (const raw of msg.posts || []) {
-    const p = self.TSENormalize.normalizePost(raw, now);
-    if (p && !store.posts[p.id]) {
-      // The saved feed is ordered by save recency (Threads exposes no saved
-      // timestamp — verified: pagination cursors are opaque signed blobs).
-      // Capture order is therefore the best available proxy: 1 = saved most
-      // recently. Accurate for a clean top-to-bottom grab (Clear -> Grab).
-      p.savedOrder = ++store.state.orderCounter;
-      attachReplyTo(p, raw, now);
-      store.posts[p.id] = p;
-      added++;
-    }
+    try {
+      const p = self.TSENormalize.normalizePost(raw, now);
+      if (p && !store.posts[p.id]) {
+        // The saved feed is ordered by save recency (Threads exposes no saved
+        // timestamp — verified: pagination cursors are opaque signed blobs).
+        // Capture order is therefore the best available proxy: 1 = saved most
+        // recently. Accurate for a clean top-to-bottom grab (Clear -> Grab).
+        p.savedOrder = ++store.state.orderCounter;
+        attachReplyTo(p, raw, now);
+        store.posts[p.id] = p;
+        added++;
+      }
+    } catch (e) { bad++; }
   }
+  if (bad) logError('normalize:saved', bad + ' post(s) failed to parse — skipped');
   if (msg.pageInfo && typeof msg.pageInfo.has_next_page === 'boolean') {
     store.state.hasNext = msg.pageInfo.has_next_page;
   }
@@ -317,22 +370,25 @@ async function handleColumnsBatch(store, msg) {
   if (!feed) return { added: 0, count: total(), doneFeeds: parallelDone(st) };
 
   const now = new Date().toISOString();
-  let added = 0;
+  let added = 0, bad = 0;
   for (const raw of msg.posts || []) {
     if ((st.counts[feed.name] || 0) >= st.target) break;
-    const p = self.TSENormalize.normalizePost(raw, now);
-    if (!p) continue;
-    const key = feed.url + '|' + p.id;
-    if (store.feedPosts[key]) continue;
-    p.feed = feed.name;
-    // run-global index: waves reuse queue slots 0-3, exports group by this
-    p.feedIndex = ((st.wave || 1) - 1) * 4 + st.queue.indexOf(feed);
-    p.feedOrder = (st.orderCounters[feed.url] = (st.orderCounters[feed.url] || 0) + 1);
-    attachReplyTo(p, raw, now);
-    store.feedPosts[key] = p;
-    st.counts[feed.name] = (st.counts[feed.name] || 0) + 1;
-    added++;
+    try {
+      const p = self.TSENormalize.normalizePost(raw, now);
+      if (!p) continue;
+      const key = feed.url + '|' + p.id;
+      if (store.feedPosts[key]) continue;
+      p.feed = feed.name;
+      // run-global index: waves reuse queue slots 0-3, exports group by this
+      p.feedIndex = ((st.wave || 1) - 1) * 4 + st.queue.indexOf(feed);
+      p.feedOrder = (st.orderCounters[feed.url] = (st.orderCounters[feed.url] || 0) + 1);
+      attachReplyTo(p, raw, now);
+      store.feedPosts[key] = p;
+      st.counts[feed.name] = (st.counts[feed.name] || 0) + 1;
+      added++;
+    } catch (e) { bad++; }
   }
+  if (bad) logError('normalize:feed-columns', bad + ' post(s) failed to parse — skipped');
   if (msg.pageInfo && msg.pageInfo.has_next_page === false) st.feedEnded[feed.url] = true;
   st.lastBatchAt = now;
   touchProgress(st);
@@ -350,16 +406,19 @@ async function handleColumnsBatch(store, msg) {
 async function handleLikedBatch(msg, sender) {
   const store = await getStore();
   const now = new Date().toISOString();
-  let added = 0;
+  let added = 0, bad = 0;
   for (const raw of msg.posts || []) {
-    const p = self.TSENormalize.normalizePost(raw, now);
-    if (p && !store.likedPosts[p.id]) {
-      p.likedOrder = ++store.likedState.orderCounter; // 1 = liked most recently
-      attachReplyTo(p, raw, now);
-      store.likedPosts[p.id] = p;
-      added++;
-    }
+    try {
+      const p = self.TSENormalize.normalizePost(raw, now);
+      if (p && !store.likedPosts[p.id]) {
+        p.likedOrder = ++store.likedState.orderCounter; // 1 = liked most recently
+        attachReplyTo(p, raw, now);
+        store.likedPosts[p.id] = p;
+        added++;
+      }
+    } catch (e) { bad++; }
   }
+  if (bad) logError('normalize:liked', bad + ' post(s) failed to parse — skipped');
   if (msg.pageInfo && typeof msg.pageInfo.has_next_page === 'boolean') {
     store.likedState.hasNext = msg.pageInfo.has_next_page;
   }
@@ -385,21 +444,24 @@ async function handleFeedBatch(msg, sender) {
   if (!feed) return { added: 0, count: total() };
 
   const now = new Date().toISOString();
-  let added = 0;
+  let added = 0, bad = 0;
   for (const raw of msg.posts || []) {
     if ((st.counts[feed.name] || 0) >= st.target) break;
-    const p = self.TSENormalize.normalizePost(raw, now);
-    if (!p) continue;
-    const key = feed.url + '|' + p.id;
-    if (store.feedPosts[key]) continue;
-    p.feed = feed.name;
-    p.feedIndex = st.index;              // preserves run order in exports
-    p.feedOrder = ++st.orderCounter;     // 1 = top of this feed at grab time
-    attachReplyTo(p, raw, now);
-    store.feedPosts[key] = p;
-    st.counts[feed.name] = (st.counts[feed.name] || 0) + 1;
-    added++;
+    try {
+      const p = self.TSENormalize.normalizePost(raw, now);
+      if (!p) continue;
+      const key = feed.url + '|' + p.id;
+      if (store.feedPosts[key]) continue;
+      p.feed = feed.name;
+      p.feedIndex = st.index;              // preserves run order in exports
+      p.feedOrder = ++st.orderCounter;     // 1 = top of this feed at grab time
+      attachReplyTo(p, raw, now);
+      store.feedPosts[key] = p;
+      st.counts[feed.name] = (st.counts[feed.name] || 0) + 1;
+      added++;
+    } catch (e) { bad++; }
   }
+  if (bad) logError('normalize:feed', bad + ' post(s) failed to parse — skipped');
   if (msg.pageInfo && typeof msg.pageInfo.has_next_page === 'boolean') {
     st.hasNext = msg.pageInfo.has_next_page;
   }
@@ -430,24 +492,27 @@ async function handleProfileBatch(msg, sender) {
 
   const now = new Date().toISOString();
   const target = String(st.target || '').toLowerCase();
-  let added = 0;
+  let added = 0, bad = 0;
   for (const raw of msg.posts || []) {
     // keep only the profile owner's posts (the Replies tab interleaves the
     // posts they replied to, authored by other people)
     if (!raw || !raw.user || String(raw.user.username || '').toLowerCase() !== target) continue;
-    const p = self.TSENormalize.normalizePost(raw, now);
-    if (!p) continue;
-    const key = st.target + '|' + st.stage + '|' + p.id;
-    if (store.profilePosts[key]) continue;
-    p.profileHandle = '@' + st.target;           // whose profile this came from
-    p.section = st.stage;                        // 'threads' | 'replies'
-    p.sectionIndex = st.stage === 'replies' ? 1 : 0;
-    p.profileOrder = ++st.orderCounter;          // 1 = newest in this section
-    attachReplyTo(p, raw, now);
-    store.profilePosts[key] = p;
-    st.curCount++;
-    added++;
+    try {
+      const p = self.TSENormalize.normalizePost(raw, now);
+      if (!p) continue;
+      const key = st.target + '|' + st.stage + '|' + p.id;
+      if (store.profilePosts[key]) continue;
+      p.profileHandle = '@' + st.target;           // whose profile this came from
+      p.section = st.stage;                        // 'threads' | 'replies'
+      p.sectionIndex = st.stage === 'replies' ? 1 : 0;
+      p.profileOrder = ++st.orderCounter;          // 1 = newest in this section
+      attachReplyTo(p, raw, now);
+      store.profilePosts[key] = p;
+      st.curCount++;
+      added++;
+    } catch (e) { bad++; }
   }
+  if (bad) logError('normalize:profile', bad + ' post(s) failed to parse — skipped');
   if (msg.pageInfo && typeof msg.pageInfo.has_next_page === 'boolean') {
     st.hasNext = msg.pageInfo.has_next_page;
   }
@@ -509,7 +574,11 @@ async function handleContentReady(msg, sender) {
   }
 }
 
-chrome.alarms.onAlarm.addListener(async (alarm) => {
+chrome.alarms.onAlarm.addListener((alarm) => {
+  watchdogTick(alarm).catch((e) => logError('watchdog', e));
+});
+
+async function watchdogTick(alarm) {
   if (alarm.name !== WATCHDOG) return;
   const store = await getStore();
   const st = store.feedState;
@@ -542,7 +611,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       await advanceProfile(store);
     }
   }
-});
+}
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   (async () => {
@@ -581,7 +650,14 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case 'GET_STATE': {
         const st = store.feedState;
         const cur = currentFeed(st);
+        let bytes = 0;
+        try { bytes = await chrome.storage.local.getBytesInUse(null); } catch (_) {}
         sendResponse({
+          storage: {
+            bytes,
+            quota: chrome.storage.local.QUOTA_BYTES || 10485760,
+            full: storageFull,
+          },
           saved: {
             count: Object.keys(store.posts).length,
             grabbing: store.state.grabbing,
@@ -998,6 +1074,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       default:
         sendResponse({ ok: false, error: 'unknown message: ' + msg.type });
     }
-  })();
+  })().catch((e) => {
+    // Unexpected throw in a handler. Without this catch the rejection is
+    // unhandled: sendResponse never fires, the caller's port just closes,
+    // and nothing is recorded anywhere. Log it, surface it on the active
+    // grab, and still answer the caller.
+    const err = 'Internal error: ' + String((e && e.message) || e);
+    logError('message:' + (msg && msg.type), e);
+    stampActiveError(err);
+    if (mem) persist();
+    try { sendResponse({ ok: false, error: err }); } catch (_) {}
+  });
   return true; // async sendResponse
 });

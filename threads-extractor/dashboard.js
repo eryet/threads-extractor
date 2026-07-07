@@ -79,6 +79,27 @@
             : t('live_idle');
   }
 
+  async function loadStorage() {
+    let bytes = 0;
+    try { bytes = await chrome.storage.local.getBytesInUse(null); } catch (_) { return; }
+    const quota = chrome.storage.local.QUOTA_BYTES || 10485760;
+    const pct = Math.min(1, bytes / quota);
+    const full = pct >= 0.97;
+    const warn = !full && pct >= 0.8;
+    const sec = $('storeSec');
+    sec.hidden = false;
+    sec.classList.toggle('warn', warn);
+    sec.classList.toggle('full', full);
+    $('storeFill').style.width = Math.max(1, Math.round(pct * 100)) + '%';
+    $('storeTxt').textContent = t('storage_used', {
+      used: (bytes / 1048576).toFixed(1),
+      quota: Math.round(quota / 1048576),
+    });
+    const hint = $('storeHint');
+    hint.hidden = !(warn || full);
+    if (warn || full) hint.textContent = t(full ? 'storage_full' : 'storage_low');
+  }
+
   // ---- filtering + sorting ----
 
   const orderOf = (p) => (p.savedOrder != null ? p.savedOrder
@@ -992,6 +1013,7 @@
       reloadTimer = setTimeout(async () => {
         await loadPosts();
         update(true);
+        loadStorage();
       }, 800);
     }
   });
@@ -1015,7 +1037,7 @@
       },
     });
     try { setLayout(localStorage.getItem('tse_dash_layout') || 'grid'); } catch (_) {}
-    await Promise.all([loadPosts(), loadLive()]);
+    await Promise.all([loadPosts(), loadLive(), loadStorage()]);
     update();
   })();
 })();

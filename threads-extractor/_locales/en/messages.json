@@ -496,5 +496,14 @@
   },
   "banner_tail": {
     "message": "{label} — don't use this tab, keep it visible · stop anytime from the extension popup"
+  },
+  "storage_used": {
+    "message": "Storage: {used} / {quota} MB"
+  },
+  "storage_low": {
+    "message": "running low — export & delete old posts"
+  },
+  "storage_full": {
+    "message": "storage full — capture stops; delete old posts"
   }
 }

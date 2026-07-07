@@ -297,6 +297,25 @@
 
     .pane { display: none; }
     .pane.active { display: block; }
+
+    /* ---- storage meter ---- */
+    .storeRow { margin-top: 10px; }
+    .storeBar { height: 3px; border-radius: 99px; background: #262626; overflow: hidden; }
+    .storeBar .fill {
+      height: 100%; width: 0%;
+      border-radius: 99px;
+      background: #3a3a3a;
+      transition: width 0.4s ease;
+    }
+    .storeRow.warn .storeBar .fill { background: #e3b341; }
+    .storeRow.full .storeBar .fill { background: var(--danger); }
+    .storeTxt {
+      display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+      font-size: 10.5px; color: var(--faint);
+      margin-top: 4px;
+    }
+    .storeRow.warn .storeTxt { color: #e3b341; }
+    .storeRow.full .storeTxt { color: var(--danger); }
   </style>
 </head>
 <body>
@@ -439,6 +458,11 @@
       <button id="btnProfMd" class="act" disabled>MD</button>
     </div>
     <button id="btnProfClear" class="act ghost" data-i18n="btn_clear_prof" disabled>Clear profile data</button>
+  </div>
+
+  <div class="storeRow" id="storeRow" hidden>
+    <div class="storeBar"><div class="fill" id="storeFill"></div></div>
+    <div class="storeTxt"><span id="storeTxt"></span><span id="storeHint" hidden></span></div>
   </div>
 
   <script src="lib/i18n.js"></script>

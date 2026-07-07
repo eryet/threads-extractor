@@ -37,6 +37,9 @@
     profThreads: $('btnProfThreads'), profReplies: $('btnProfReplies'), profStop: $('btnProfStop'),
     profJson: $('btnProfJson'), profCsv: $('btnProfCsv'), profMd: $('btnProfMd'),
     profClear: $('btnProfClear'),
+    // storage meter
+    storeRow: $('storeRow'), storeFill: $('storeFill'),
+    storeTxt: $('storeTxt'), storeHint: $('storeHint'),
   };
 
   const BUILTIN_FEEDS = [
@@ -329,6 +332,24 @@
       setStatus(els.feedStatus, t('st_feed_done', { count: f.count, n: feedsDone }));
     } else {
       setStatus(els.feedStatus, t('st_select_feeds'));
+    }
+
+    // ---- storage meter ----
+    const sg = state.storage || {};
+    if (sg.quota) {
+      const pct = Math.min(1, (sg.bytes || 0) / sg.quota);
+      const full = !!sg.full || pct >= 0.97;
+      const warn = !full && pct >= 0.8;
+      els.storeRow.hidden = false;
+      els.storeRow.classList.toggle('warn', warn);
+      els.storeRow.classList.toggle('full', full);
+      els.storeFill.style.width = Math.max(1, Math.round(pct * 100)) + '%';
+      els.storeTxt.textContent = t('storage_used', {
+        used: ((sg.bytes || 0) / 1048576).toFixed(1),
+        quota: Math.round(sg.quota / 1048576),
+      });
+      els.storeHint.hidden = !(warn || full);
+      if (warn || full) els.storeHint.textContent = t(full ? 'storage_full' : 'storage_low');
     }
   }
 

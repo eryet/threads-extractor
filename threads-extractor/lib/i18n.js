@@ -21,12 +21,14 @@
     'columns run stalled — stopped (keep the tab visible)': '欄位執行停滯 — 已停止（請保持分頁可見）',
     'Could not find your profile link — reload the Threads tab, or type a handle.': '找不到你的個人檔案連結 — 請重新整理 Threads 分頁，或輸入帳號。',
     'No feed columns pinned on your board — add feed columns first.': '你的看板沒有釘選動態欄位 — 請先新增動態欄位。',
+    'Storage is full — capture stopped. Export, then delete old posts to free space.': '儲存空間已滿 — 擷取已停止。請先匯出，再刪除舊貼文以釋放空間。',
   };
   const ERROR_PATTERNS = [
     [/^"(.+)" stalled — skipped$/, '「$1」停滯 — 已略過'],
     [/^couldn't open: (.+)$/, '無法開啟：$1'],
     [/^"(.+)" is not a valid handle\.$/, '「$1」不是有效的帳號。'],
     [/^profile (?:threads|replies) stalled — moved on$/, '個人檔案擷取停滯 — 已結束'],
+    [/^Internal error: (.+)$/, '內部錯誤：$1'],
   ];
 
   // locale_tag in each messages.json says which locale Chrome actually served

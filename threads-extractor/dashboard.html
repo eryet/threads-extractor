@@ -75,6 +75,25 @@
     details.sideSec:not([open]) > summary::before { transform: rotate(-90deg); }
     details.sideSec > summary:hover { color: var(--muted); }
 
+    /* storage meter (sidebar footer) */
+    .storeSec { margin: 20px 4px 0; }
+    .storeBar { height: 3px; border-radius: 99px; background: #262626; overflow: hidden; }
+    .storeBar .fill {
+      height: 100%; width: 0%;
+      border-radius: 99px;
+      background: #3a3a3a;
+      transition: width 0.4s ease;
+    }
+    .storeSec.warn .storeBar .fill { background: #e3b341; }
+    .storeSec.full .storeBar .fill { background: var(--danger); }
+    .storeTxt {
+      display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+      font-size: 10.5px; color: var(--faint);
+      margin-top: 5px;
+    }
+    .storeSec.warn .storeTxt { color: #e3b341; }
+    .storeSec.full .storeTxt { color: var(--danger); }
+
     .navItem, .chip {
       display: flex; align-items: center; gap: 8px;
       width: 100%;
@@ -613,6 +632,11 @@
         future runs.
       </div>
     </details>
+
+    <div class="storeSec" id="storeSec" hidden>
+      <div class="storeBar"><div class="fill" id="storeFill"></div></div>
+      <div class="storeTxt"><span id="storeTxt"></span><span id="storeHint" hidden></span></div>
+    </div>
 
   </aside>
 
