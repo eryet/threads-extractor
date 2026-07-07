@@ -30,9 +30,7 @@
     .head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
     .logo {
       width: 26px; height: 26px; border-radius: 8px;
-      background: var(--text); color: var(--bg);
-      display: grid; place-items: center;
-      font-weight: 800; font-size: 15px;
+      display: block; flex: none;
     }
     .head h1 { font-size: 14px; font-weight: 650; margin: 0; letter-spacing: 0.01em; }
     .dashBtn {
@@ -303,7 +301,7 @@
 </head>
 <body>
   <div class="head">
-    <div class="logo">@</div>
+    <img class="logo" src="icons/icon48.png" alt="" />
     <h1>Threads Extractor</h1>
     <button class="dashBtn" id="btnDash" data-i18n="btn_dashboard" title="Browse everything captured so far">Dashboard ↗</button>
     <div class="dot" id="liveDot"></div>

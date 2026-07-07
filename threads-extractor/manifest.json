@@ -4,6 +4,11 @@
   "version": "0.14.2",
   "description": "__MSG_appDesc__",
   "default_locale": "en",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "minimum_chrome_version": "111",
   "permissions": ["storage", "downloads", "alarms"],
   "host_permissions": [
@@ -11,7 +16,15 @@
     "https://threads.com/*"
   ],
   "background": { "service_worker": "sw.js" },
-  "action": { "default_popup": "popup.html", "default_title": "__MSG_appName__" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "__MSG_appName__",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
   "content_scripts": [
     {
       "matches": ["https://www.threads.com/*", "https://threads.com/*"],

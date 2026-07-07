@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>Threads Extractor — Dashboard</title>
+  <link rel="icon" href="icons/icon48.png" />
   <style>
     :root {
       --bg: #101010;
@@ -41,9 +42,7 @@
     .brand { display: flex; align-items: center; gap: 9px; margin-bottom: 16px; }
     .logo {
       width: 28px; height: 28px; border-radius: 9px;
-      background: var(--text); color: var(--bg);
-      display: grid; place-items: center;
-      font-weight: 800; font-size: 16px;
+      display: block; flex: none;
     }
     .brand h1 { font-size: 14px; font-weight: 650; margin: 0; }
     .brand .sub { font-size: 10.5px; color: var(--faint); margin-top: 1px; }
@@ -548,7 +547,7 @@
 <body>
   <aside>
     <div class="brand">
-      <div class="logo">@</div>
+      <img class="logo" src="icons/icon48.png" alt="" />
       <div>
         <h1 data-i18n="dash_title">Dashboard</h1>
         <div class="sub" id="liveText">Threads Extractor</div>
