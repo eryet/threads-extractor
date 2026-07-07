@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Threads Extractor",
   "version": "0.14.2",
-  "description": "Personal tool: grab your saved posts, feeds (one by one or 4 board columns in parallel), and profiles from Threads; browse everything in a local dashboard and export JSON / CSV / Markdown. Runs entirely locally.",
+  "description": "Grab your saved posts, liked posts, feeds and profiles from Threads into a local dashboard. Export JSON/CSV/Markdown. 100% local.",
   "minimum_chrome_version": "111",
   "permissions": ["storage", "downloads", "alarms"],
   "host_permissions": [

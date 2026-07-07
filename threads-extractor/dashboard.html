@@ -64,6 +64,18 @@
     .secHead a { margin-left: auto; font-size: 10.5px; color: var(--faint); text-decoration: none; cursor: pointer; text-transform: none; letter-spacing: 0; }
     .secHead a:hover { color: var(--text); }
 
+    details.sideSec > summary { cursor: pointer; list-style: none; user-select: none; }
+    details.sideSec > summary::-webkit-details-marker { display: none; }
+    details.sideSec > summary::before {
+      content: '▾';
+      font-size: 8px;
+      align-self: center;
+      margin-right: 5px;
+      transition: transform 0.15s ease;
+    }
+    details.sideSec:not([open]) > summary::before { transform: rotate(-90deg); }
+    details.sideSec > summary:hover { color: var(--muted); }
+
     .navItem, .chip {
       display: flex; align-items: center; gap: 8px;
       width: 100%;
@@ -539,65 +551,75 @@
       <div class="dot" id="liveDot"></div>
     </div>
 
-    <div class="secHead" data-i18n="sec_source">Source</div>
-    <div class="chipWrap" id="sourceNav"></div>
+    <details class="sideSec" data-sec="source" open>
+      <summary class="secHead" data-i18n="sec_source">Source</summary>
+      <div class="chipWrap" id="sourceNav"></div>
+    </details>
 
-    <div id="feedFacet" hidden>
-      <div class="secHead"><span data-i18n="sec_feed">Feed</span> <a id="feedFacetClear" data-i18n="link_clear" hidden>clear</a></div>
+    <details class="sideSec" data-sec="feed" id="feedFacet" open hidden>
+      <summary class="secHead"><span data-i18n="sec_feed">Feed</span> <a id="feedFacetClear" data-i18n="link_clear" hidden>clear</a></summary>
       <div class="chipWrap" id="feedChips"></div>
-    </div>
+    </details>
 
-    <div id="profFacet" hidden>
-      <div class="secHead"><span data-i18n="sec_profile">Profile</span> <a id="profFacetClear" data-i18n="link_clear" hidden>clear</a></div>
+    <details class="sideSec" data-sec="profile" id="profFacet" open hidden>
+      <summary class="secHead"><span data-i18n="sec_profile">Profile</span> <a id="profFacetClear" data-i18n="link_clear" hidden>clear</a></summary>
       <div class="chipWrap" id="profChips"></div>
       <div class="chipWrap" id="sectionChips" style="margin-top:4px"></div>
-    </div>
+    </details>
 
-    <div id="authorFacet" hidden>
-      <div class="secHead"><span data-i18n="sec_authors">Top authors</span> <a id="authorFacetClear" data-i18n="link_clear" hidden>clear</a></div>
+    <details class="sideSec" data-sec="authors" id="authorFacet" open hidden>
+      <summary class="secHead"><span data-i18n="sec_authors">Top authors</span> <a id="authorFacetClear" data-i18n="link_clear" hidden>clear</a></summary>
       <div class="chipWrap" id="authorChips"></div>
-    </div>
+    </details>
 
-    <div class="secHead" data-i18n="sec_export">Export this view</div>
-    <div class="exportRow">
-      <button id="expJson" disabled>JSON</button>
-      <button id="expCsv" disabled>CSV</button>
-      <button id="expMd" disabled>MD</button>
-    </div>
-    <div class="sideNote" data-i18n="note_export">
-      Exports exactly what the current filters show.
-      Media URLs are signed by Meta's CDN and expire after a few days.
-    </div>
+    <details class="sideSec" data-sec="export" open>
+      <summary class="secHead" data-i18n="sec_export">Export this view</summary>
+      <div class="exportRow">
+        <button id="expJson" disabled>JSON</button>
+        <button id="expCsv" disabled>CSV</button>
+        <button id="expMd" disabled>MD</button>
+      </div>
+      <div class="sideNote" data-i18n="note_export">
+        Exports exactly what the current filters show.
+        Media URLs are signed by Meta's CDN and expire after a few days.
+      </div>
+    </details>
 
-    <div class="secHead" data-i18n="sec_delete">Delete</div>
-    <div class="exportRow">
-      <button id="delShown" disabled data-i18n="btn_delete_shown">Delete shown posts…</button>
-    </div>
-    <div class="sideNote" data-i18n="note_delete">
-      Removes exactly what the current filters show — narrow it down with a
-      feed, profile, author, date range or search first. Can't be undone;
-      export first if unsure.
-    </div>
+    <details class="sideSec" data-sec="delete" open>
+      <summary class="secHead" data-i18n="sec_delete">Delete</summary>
+      <div class="exportRow">
+        <button id="delShown" disabled data-i18n="btn_delete_shown">Delete shown posts…</button>
+      </div>
+      <div class="sideNote" data-i18n="note_delete">
+        Removes exactly what the current filters show — narrow it down with a
+        feed, profile, author, date range or search first. Can't be undone;
+        export first if unsure.
+      </div>
+    </details>
 
-    <div class="secHead" data-i18n="sec_import">Import</div>
-    <div class="exportRow">
-      <button id="impBtn" data-i18n="btn_import">Import export JSON…</button>
-    </div>
-    <input id="impFile" type="file" accept="application/json,.json" multiple hidden />
-    <div class="sideNote" id="impNote" data-i18n="note_import">
-      Restore posts from earlier JSON exports (saved / feeds / profile —
-      multiple files ok). Duplicates are skipped; imported feed posts survive
-      future runs.
-    </div>
+    <details class="sideSec" data-sec="import" open>
+      <summary class="secHead" data-i18n="sec_import">Import</summary>
+      <div class="exportRow">
+        <button id="impBtn" data-i18n="btn_import">Import export JSON…</button>
+      </div>
+      <input id="impFile" type="file" accept="application/json,.json" multiple hidden />
+      <div class="sideNote" id="impNote" data-i18n="note_import">
+        Restore posts from earlier JSON exports (saved / feeds / profile —
+        multiple files ok). Duplicates are skipped; imported feed posts survive
+        future runs.
+      </div>
+    </details>
 
-    <div class="secHead" data-i18n="lang_label">Language</div>
-    <div class="exportRow">
-      <select id="langSel" style="flex:1">
-        <option value="auto">Auto</option>
-        <option value="en">English</option>
-        <option value="zh_TW">繁體中文</option>
-      </select>
-    </div>
+    <details class="sideSec" data-sec="lang" open>
+      <summary class="secHead" data-i18n="lang_label">Language</summary>
+      <div class="exportRow">
+        <select id="langSel" style="flex:1">
+          <option value="auto">Auto</option>
+          <option value="en">English</option>
+          <option value="zh_TW">繁體中文</option>
+        </select>
+      </div>
+    </details>
   </aside>
 
   <main id="scroller">
@@ -636,13 +658,18 @@
         <option value="1000">≥ 1000</option>
       </select>
       <select id="sortSel">
-        <option value="capture" data-i18n="opt_sort_capture">Capture order</option>
+        <option value="capture" data-i18n="opt_sort_capture">Capture order (asc)</option>
+        <option value="capture_desc" data-i18n="opt_sort_capture_desc">Capture order (desc)</option>
         <option value="new" data-i18n="opt_sort_new">Newest posted</option>
         <option value="old" data-i18n="opt_sort_old">Oldest posted</option>
         <option value="likes" data-i18n="opt_sort_likes">Most liked</option>
+        <option value="likes_asc" data-i18n="opt_sort_likes_asc">Least liked</option>
         <option value="replies" data-i18n="opt_sort_replies">Most replied</option>
+        <option value="replies_asc" data-i18n="opt_sort_replies_asc">Least replied</option>
         <option value="reposts" data-i18n="opt_sort_reposts">Most reposted</option>
+        <option value="reposts_asc" data-i18n="opt_sort_reposts_asc">Least reposted</option>
         <option value="shares" data-i18n="opt_sort_shares">Most shared</option>
+        <option value="shares_asc" data-i18n="opt_sort_shares_asc">Least shared</option>
       </select>
       <div class="layoutToggle">
         <button id="layGrid" class="active" data-i18n-title="title_grid" title="Grid">▦</button>

@@ -146,12 +146,17 @@
       return true;
     });
     if (state.sort === 'capture') view.sort(captureCmp);
+    else if (state.sort === 'capture_desc') view.sort((a, b) => captureCmp(b, a));
     else if (state.sort === 'new') view.sort((a, b) => String(b.takenAt || '').localeCompare(String(a.takenAt || '')));
     else if (state.sort === 'old') view.sort((a, b) => String(a.takenAt || '').localeCompare(String(b.takenAt || '')));
-    else if (state.sort === 'likes') view.sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
-    else if (state.sort === 'replies') view.sort((a, b) => (b.replyCount || 0) - (a.replyCount || 0));
-    else if (state.sort === 'reposts') view.sort((a, b) => (b.repostCount || 0) - (a.repostCount || 0));
-    else if (state.sort === 'shares') view.sort((a, b) => (b.shareCount || 0) - (a.shareCount || 0));
+    else {
+      const m = /^(likes|replies|reposts|shares)(_asc)?$/.exec(state.sort);
+      if (m) {
+        const key = { likes: 'likeCount', replies: 'replyCount', reposts: 'repostCount', shares: 'shareCount' }[m[1]];
+        const dir = m[2] ? 1 : -1;
+        view.sort((a, b) => dir * ((a[key] || 0) - (b[key] || 0)));
+      }
+    }
   }
 
   // ---- sidebar facets ----
@@ -212,7 +217,7 @@
         }));
       }
       $('feedFacetClear').hidden = !state.feeds.size;
-      $('feedFacetClear').onclick = () => { state.feeds.clear(); update(); };
+      $('feedFacetClear').onclick = (e) => { e.preventDefault(); state.feeds.clear(); update(); };
     }
 
     // profile facet
@@ -241,7 +246,7 @@
         }));
       }
       $('profFacetClear').hidden = !state.handles.size && !state.sections.size;
-      $('profFacetClear').onclick = () => { state.handles.clear(); state.sections.clear(); update(); };
+      $('profFacetClear').onclick = (e) => { e.preventDefault(); state.handles.clear(); state.sections.clear(); update(); };
     }
 
     // top authors (within the current scope, ignoring the author filter itself)
@@ -264,7 +269,7 @@
         }));
       }
       $('authorFacetClear').hidden = !state.authors.size;
-      $('authorFacetClear').onclick = () => { state.authors.clear(); update(); };
+      $('authorFacetClear').onclick = (e) => { e.preventDefault(); state.authors.clear(); update(); };
     }
   }
 
@@ -923,6 +928,18 @@
     try { localStorage.setItem('tse_dash_layout', l); } catch (_) {}
     update(); // column count changed — rebuild the virtual layout
   }
+
+  // ---- collapsible sidebar sections ----
+
+  let collapsedSecs = {};
+  try { collapsedSecs = JSON.parse(localStorage.getItem('tse_dash_secs') || '{}'); } catch (_) {}
+  document.querySelectorAll('details.sideSec').forEach((d) => {
+    if (collapsedSecs[d.dataset.sec]) d.open = false;
+    d.addEventListener('toggle', () => {
+      collapsedSecs[d.dataset.sec] = !d.open;
+      try { localStorage.setItem('tse_dash_secs', JSON.stringify(collapsedSecs)); } catch (_) {}
+    });
+  });
 
   // ---- live updates while a grab runs ----
 
