@@ -22,6 +22,10 @@ const FEED_STATE_DEFAULTS = {
   counts: {},                // feed name -> captured count
   feedEnded: {},             // parallel: feed url -> has_next_page === false seen
   orderCounters: {},         // parallel: feed url -> per-feed order counter
+  waveQueue: [],             // parallel: feeds waiting for the next wave of 4
+  wave: 1,                   // parallel: current wave number (1-based)
+  wavesTotal: 1,             // parallel: total waves for this run
+  waveBound: false,          // parallel: current wave's COLUMNS_INFO arrived
   awaitingNav: false,        // navigated, waiting for CONTENT_READY on the new page
   tabId: null,               // tab the run drives (persisted: survives SW restarts)
   orderCounter: 0,           // per-feed, reset on advance (sequential runs)
@@ -50,11 +54,20 @@ async function getStore() {
   if (!mem) {
     const got = await chrome.storage.local.get([
       'tse_posts', 'tse_state', 'tse_feed_posts', 'tse_feed_state', 'tse_feed_list',
-      'tse_profile_posts', 'tse_profile_state',
+      'tse_profile_posts', 'tse_profile_state', 'tse_liked_posts', 'tse_liked_state',
     ]);
+    const SCROLL_STATE_DEFAULTS = {
+      grabbing: false, hasNext: null, lastBatchAt: null, lastError: null, orderCounter: 0,
+      limit: null,       // stop after this many posts added in one grab
+      until: null,       // stop once a whole batch is older than this date (YYYY-MM-DD)
+      grabAdded: 0,      // posts added by the current grab
+      stopNote: null,    // 'limit' | 'date' — why the grab auto-stopped
+    };
     mem = {
       posts: got.tse_posts || {},
-      state: Object.assign({ grabbing: false, hasNext: null, lastBatchAt: null, lastError: null, orderCounter: 0 }, got.tse_state),
+      state: Object.assign({}, SCROLL_STATE_DEFAULTS, got.tse_state),
+      likedPosts: got.tse_liked_posts || {},
+      likedState: Object.assign({}, SCROLL_STATE_DEFAULTS, got.tse_liked_state),
       feedPosts: got.tse_feed_posts || {},
       // fresh object fields so persisted pre-parallel states never share (and
       // mutate) the DEFAULTS references
@@ -71,6 +84,7 @@ function persist() {
   persistQueue = persistQueue.then(() =>
     chrome.storage.local.set({
       tse_posts: mem.posts, tse_state: mem.state,
+      tse_liked_posts: mem.likedPosts, tse_liked_state: mem.likedState,
       tse_feed_posts: mem.feedPosts, tse_feed_state: mem.feedState,
       tse_feed_list: mem.feedList,
       tse_profile_posts: mem.profilePosts, tse_profile_state: mem.profileState,
@@ -177,11 +191,31 @@ async function finishRun(store) {
   const st = store.feedState;
   st.running = false;
   st.awaitingNav = false;
+  st.waveQueue = [];
   maybeClearWatchdog(store);
   if (st.tabId != null) {
     chrome.tabs.sendMessage(st.tabId, { type: 'STOP_SCROLL' }).catch(() => {});
   }
   await persist();
+}
+
+// batch waves: current wave's columns are done — hand the next 4 feeds to the
+// content script, which tears down this wave's columns and opens the new ones
+async function startNextWave(store) {
+  const st = store.feedState;
+  st.queue = st.waveQueue.slice(0, 4);
+  st.waveQueue = st.waveQueue.slice(4);
+  st.wave = (st.wave || 1) + 1;
+  st.feedEnded = {};
+  st.waveBound = false;
+  touchProgress(st);
+  await persist();
+  try {
+    await chrome.tabs.sendMessage(st.tabId, { type: 'NEXT_WAVE', feeds: st.queue });
+  } catch (e) {
+    st.lastError = 'Lost the Threads tab between batch waves.';
+    await finishRun(store);
+  }
 }
 
 // ---- profile run driving (threads stage -> optional replies stage) ----
@@ -221,7 +255,32 @@ async function finishProfile(store) {
   await persist();
 }
 
-async function handleSavedBatch(msg) {
+// Post-limit / date-cutoff for saved & liked grabs. The feeds are ordered by
+// save/like recency (not post date), so the date cutoff fires only when an
+// ENTIRE batch is older — one old post saved recently shouldn't end the grab.
+function checkGrabLimits(st, msg, added, senderTabId) {
+  if (!st.grabbing) return;
+  st.grabAdded = (st.grabAdded || 0) + added;
+  let stop = null;
+  if (st.limit && st.grabAdded >= st.limit) {
+    stop = 'limit';
+  } else if (st.until && (msg.posts || []).length) {
+    const cutoff = Date.parse(st.until);
+    if (!Number.isNaN(cutoff) &&
+        msg.posts.every((raw) => raw && raw.taken_at && raw.taken_at * 1000 < cutoff)) {
+      stop = 'date';
+    }
+  }
+  if (stop) {
+    st.grabbing = false;
+    st.stopNote = stop;
+    if (senderTabId != null) {
+      chrome.tabs.sendMessage(senderTabId, { type: 'STOP_SCROLL' }).catch(() => {});
+    }
+  }
+}
+
+async function handleSavedBatch(msg, sender) {
   const store = await getStore();
   const now = new Date().toISOString();
   let added = 0;
@@ -242,6 +301,7 @@ async function handleSavedBatch(msg) {
     store.state.hasNext = msg.pageInfo.has_next_page;
   }
   store.state.lastBatchAt = now;
+  checkGrabLimits(store.state, msg, added, sender && sender.tab && sender.tab.id);
   if (added || msg.pageInfo) await persist();
   return { added, count: Object.keys(store.posts).length };
 }
@@ -265,7 +325,8 @@ async function handleColumnsBatch(store, msg) {
     const key = feed.url + '|' + p.id;
     if (store.feedPosts[key]) continue;
     p.feed = feed.name;
-    p.feedIndex = st.queue.indexOf(feed);
+    // run-global index: waves reuse queue slots 0-3, exports group by this
+    p.feedIndex = ((st.wave || 1) - 1) * 4 + st.queue.indexOf(feed);
     p.feedOrder = (st.orderCounters[feed.url] = (st.orderCounters[feed.url] || 0) + 1);
     attachReplyTo(p, raw, now);
     store.feedPosts[key] = p;
@@ -277,11 +338,35 @@ async function handleColumnsBatch(store, msg) {
   touchProgress(st);
   const doneFeeds = parallelDone(st);
   if (st.queue.length && doneFeeds.length >= st.queue.length) {
-    await finishRun(store);
+    if ((st.waveQueue || []).length) await startNextWave(store);
+    else await finishRun(store);
   } else {
     await persist();
   }
   return { added, count: total(), doneFeeds };
+}
+
+// /liked mirrors /saved: always-on capture, order = like recency proxy
+async function handleLikedBatch(msg, sender) {
+  const store = await getStore();
+  const now = new Date().toISOString();
+  let added = 0;
+  for (const raw of msg.posts || []) {
+    const p = self.TSENormalize.normalizePost(raw, now);
+    if (p && !store.likedPosts[p.id]) {
+      p.likedOrder = ++store.likedState.orderCounter; // 1 = liked most recently
+      attachReplyTo(p, raw, now);
+      store.likedPosts[p.id] = p;
+      added++;
+    }
+  }
+  if (msg.pageInfo && typeof msg.pageInfo.has_next_page === 'boolean') {
+    store.likedState.hasNext = msg.pageInfo.has_next_page;
+  }
+  store.likedState.lastBatchAt = now;
+  checkGrabLimits(store.likedState, msg, added, sender && sender.tab && sender.tab.id);
+  if (added || msg.pageInfo) await persist();
+  return { added, count: Object.keys(store.likedPosts).length };
 }
 
 async function handleFeedBatch(msg, sender) {
@@ -415,9 +500,12 @@ async function handleContentReady(msg, sender) {
     }
     return;
   }
-  // saved grab resume after the /saved navigation
+  // saved/liked grab resume after the /saved or /liked navigation
   if (store.state.grabbing && msg.kind === 'saved') {
     chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'saved' }).catch(() => {});
+  }
+  if (store.likedState.grabbing && msg.kind === 'liked') {
+    chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'liked' }).catch(() => {});
   }
 }
 
@@ -431,9 +519,14 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
     const last = Date.parse(st.lastProgressAt || '') || 0;
     if (Date.now() - last > STALL_MS) {
       if (st.parallel) {
-        // columns all paginate at once — a stall means the whole run is stuck
-        st.lastError = 'columns run stalled — stopped (keep the tab visible)';
-        await finishRun(store);
+        // columns all paginate at once — a stall means this wave is stuck
+        if ((st.waveQueue || []).length) {
+          st.lastError = 'batch wave stalled — skipped to the next wave';
+          await startNextWave(store);
+        } else {
+          st.lastError = 'columns run stalled — stopped (keep the tab visible)';
+          await finishRun(store);
+        }
       } else {
         // Feed (or tab) stalled — skip to the next one instead of hanging forever.
         const feed = currentFeed(st);
@@ -458,12 +551,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       case 'BATCH':
         if (msg.kind === 'feed') sendResponse(await handleFeedBatch(msg, sender));
         else if (msg.kind === 'profile') sendResponse(await handleProfileBatch(msg, sender));
-        else sendResponse(await handleSavedBatch(msg));
+        else if (msg.kind === 'liked') sendResponse(await handleLikedBatch(msg, sender));
+        else sendResponse(await handleSavedBatch(msg, sender));
         break;
 
       case 'FEEDS': {
-        // passively discovered custom-feed list (embedded page data)
-        const feeds = (msg.feeds || []).filter((f) => f && f.id && f.name);
+        // Passively discovered custom-feed list (embedded page data). Some
+        // surfaces interleave built-in pseudo-entries (For you / Following /
+        // Ghost posts) into the list — keep only real custom feeds: numeric
+        // id and not a built-in name.
+        const builtinNames = new Set(Object.values(BUILTIN_FEED_NAMES).map((n) => n.toLowerCase()));
+        const feeds = (msg.feeds || []).filter((f) =>
+          f && f.id && f.name &&
+          /^\d+$/.test(String(f.id)) &&
+          !builtinNames.has(String(f.name).trim().toLowerCase()));
         if (feeds.length) {
           store.feedList = { feeds, at: new Date().toISOString() };
           await persist();
@@ -487,6 +588,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             hasNext: store.state.hasNext,
             lastBatchAt: store.state.lastBatchAt,
             lastError: store.state.lastError,
+            stopNote: store.state.stopNote,
+          },
+          liked: {
+            count: Object.keys(store.likedPosts).length,
+            grabbing: store.likedState.grabbing,
+            hasNext: store.likedState.hasNext,
+            lastBatchAt: store.likedState.lastBatchAt,
+            lastError: store.likedState.lastError,
+            stopNote: store.likedState.stopNote,
           },
           feed: {
             count: Object.keys(store.feedPosts).length,
@@ -499,6 +609,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             currentName: cur ? cur.name : null,
             currentCount: cur ? (st.counts[cur.name] || 0) : 0,
             doneCount: st.parallel ? parallelDone(st).length : 0,
+            wave: st.wave || 1,
+            wavesTotal: st.wavesTotal || 1,
+            waveQueueLen: (st.waveQueue || []).length,
             // feeds actively being grabbed right now (all of them in a
             // columns run, just the current one sequentially)
             activeNames: !st.running ? []
@@ -534,27 +647,36 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
 
-      case 'START': { // saved grab (feed grabs use START_RUN)
+      case 'START': { // saved or liked grab (feed grabs use START_RUN)
+        const liked = msg.mode === 'liked';
+        const st = liked ? store.likedState : store.state;
         const tab = await findThreadsTab();
         if (!tab) {
-          store.state.lastError = 'No threads.com tab found — open threads.com/saved first.';
+          st.lastError = liked
+            ? 'No threads.com tab found — open threads.com/liked first.'
+            : 'No threads.com tab found — open threads.com/saved first.';
           await persist();
-          sendResponse({ ok: false, error: store.state.lastError });
+          sendResponse({ ok: false, error: st.lastError });
           break;
         }
-        store.state.grabbing = true;
-        store.state.lastError = null;
+        st.grabbing = true;
+        st.lastError = null;
+        st.stopNote = null;
+        st.grabAdded = 0;
+        st.limit = Number(msg.limit) > 0 ? Math.floor(Number(msg.limit)) : null;
+        st.until = msg.until && !Number.isNaN(Date.parse(msg.until)) ? msg.until : null;
+        (liked ? store.state : store.likedState).grabbing = false; // modes share one scroll loop
         store.feedState.running = false;
         store.profileState.running = false;
         await persist();
         try {
-          await chrome.tabs.sendMessage(tab.id, { type: 'START_SCROLL', mode: 'saved' });
+          await chrome.tabs.sendMessage(tab.id, { type: 'START_SCROLL', mode: liked ? 'liked' : 'saved' });
           sendResponse({ ok: true });
         } catch (e) {
-          store.state.grabbing = false;
-          store.state.lastError = 'Could not reach the Threads tab — reload it and try again.';
+          st.grabbing = false;
+          st.lastError = 'Could not reach the Threads tab — reload it and try again.';
           await persist();
-          sendResponse({ ok: false, error: store.state.lastError });
+          sendResponse({ ok: false, error: st.lastError });
         }
         break;
       }
@@ -583,6 +705,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           counts: {},
         });
         store.state.grabbing = false; // modes share one scroll loop
+        store.likedState.grabbing = false;
         store.profileState.running = false;
         chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
         await navigateToCurrent(store); // persists
@@ -590,15 +713,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
 
-      case 'START_COLUMNS': { // board columns: selected feeds, up to 4 in parallel
-        const feeds = (msg.feeds || [])
+      case 'START_COLUMNS': { // board columns: all selected feeds, in waves of 4
+        const allFeeds = (msg.feeds || [])
           .filter((f) => f && f.url && f.name)
-          .map((f) => ({ name: f.name, url: normPath(f.url) + '/' }))
-          .slice(0, 4);
-        if (!feeds.length) {
+          .map((f) => ({ name: f.name, url: normPath(f.url) + '/' }));
+        if (!allFeeds.length) {
           sendResponse({ ok: false, error: 'No feeds selected.' });
           break;
         }
+        const feeds = allFeeds.slice(0, 4);
         const tab = await findThreadsTab();
         if (!tab) {
           store.feedState.lastError = 'No threads.com tab found — open threads.com first.';
@@ -613,6 +736,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           running: true,
           parallel: true,
           queue: feeds,
+          waveQueue: allFeeds.slice(4),
+          wave: 1,
+          wavesTotal: Math.ceil(allFeeds.length / 4),
+          waveBound: false,
           target: Math.max(1, Math.min(2000, Number(msg.target) || 100)),
           tabId: tab.id,
           counts: {},
@@ -620,6 +747,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           orderCounters: {},
         });
         store.state.grabbing = false; // modes share one scroll loop
+        store.likedState.grabbing = false;
         store.profileState.running = false;
         chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
         let onBoard = false;
@@ -663,9 +791,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         );
         const missing = st.queue.filter((f) => !bound.has(f.url));
         st.queue = st.queue.filter((f) => bound.has(f.url));
+        st.waveBound = true;
         if (!st.queue.length) {
           st.lastError = 'Could not open any feed columns on the board.';
-          await finishRun(store);
+          if ((st.waveQueue || []).length) await startNextWave(store);
+          else await finishRun(store);
           sendResponse({ ok: false, error: st.lastError });
           break;
         }
@@ -725,6 +855,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           tabId: tab.id,
         });
         store.state.grabbing = false;      // modes share one scroll loop
+        store.likedState.grabbing = false;
         store.feedState.running = false;
         chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
         await navigateToProfileStage(store); // persists
@@ -738,7 +869,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         } else if (msg.mode === 'profile') {
           await finishProfile(store);
         } else {
-          store.state.grabbing = false;
+          if (msg.mode === 'liked') store.likedState.grabbing = false;
+          else store.state.grabbing = false;
           await persist();
           const tab = await findThreadsTab();
           if (tab) chrome.tabs.sendMessage(tab.id, { type: 'STOP_SCROLL' }).catch(() => {});
@@ -758,16 +890,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               await advanceFeed(store);
             }
           } else if (msg.mode === 'columns') {
-            // all columns finished (or none found) — close out the run
+            // all columns finished (or none found) — next wave, or close out.
+            // A "done · all columns finished" while the new wave isn't bound
+            // yet is the PREVIOUS wave's stop racing NEXT_WAVE — ignore it.
             if (store.feedState.running && store.feedState.parallel && msg.state === 'done' &&
                 sender && sender.tab && sender.tab.id === store.feedState.tabId) {
-              await finishRun(store);
+              const st = store.feedState;
+              const stale = !st.waveBound && (st.wave || 1) > 1 &&
+                msg.reason === 'all columns finished';
+              if (!stale) {
+                if ((st.waveQueue || []).length) await startNextWave(store);
+                else await finishRun(store);
+              }
             }
           } else if (msg.mode === 'profile') {
             if (store.profileState.running && !store.profileState.awaitingNav && msg.state === 'done' &&
                 sender && sender.tab && sender.tab.id === store.profileState.tabId) {
               await advanceProfile(store);
             }
+          } else if (msg.mode === 'liked') {
+            store.likedState.grabbing = false;
+            await persist();
           } else {
             store.state.grabbing = false;
             await persist();
@@ -792,6 +935,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             const key = 'import:' + p.feed + '|' + p.id;
             if (store.feedPosts[key]) { skipped++; continue; }
             store.feedPosts[key] = p;
+          } else if (p.likedOrder != null) {
+            if (store.likedPosts[p.id]) { skipped++; continue; }
+            store.likedPosts[p.id] = p;
           } else {
             if (store.posts[p.id]) { skipped++; continue; }
             store.posts[p.id] = p;
@@ -803,6 +949,26 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
 
+      case 'DELETE_POSTS': { // dashboard: delete an explicit set of posts by storage key
+        const buckets = {
+          saved: store.posts,
+          liked: store.likedPosts,
+          feed: store.feedPosts,
+          profile: store.profilePosts,
+        };
+        let removed = 0;
+        for (const [src, keys] of Object.entries(msg.keys || {})) {
+          const bucket = buckets[src];
+          if (!bucket || !Array.isArray(keys)) continue;
+          for (const k of keys) {
+            if (bucket[k] !== undefined) { delete bucket[k]; removed++; }
+          }
+        }
+        if (removed) await persist();
+        sendResponse({ ok: true, removed });
+        break;
+      }
+
       case 'CLEAR':
         if (msg.mode === 'feed') {
           store.feedPosts = {};
@@ -810,12 +976,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         } else if (msg.mode === 'profile') {
           store.profilePosts = {};
           store.profileState = Object.assign({}, PROFILE_STATE_DEFAULTS);
+        } else if (msg.mode === 'liked') {
+          store.likedPosts = {};
+          store.likedState.orderCounter = 0;
+          store.likedState.hasNext = null;
+          store.likedState.lastBatchAt = null;
+          store.likedState.lastError = null;
+          store.likedState.stopNote = null;
         } else {
           store.posts = {};
           store.state.orderCounter = 0;
           store.state.hasNext = null;
           store.state.lastBatchAt = null;
           store.state.lastError = null;
+          store.state.stopNote = null;
         }
         await persist();
         sendResponse({ ok: true });

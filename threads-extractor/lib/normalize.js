@@ -41,6 +41,8 @@
     const user = raw.user || {};
     const id = String(raw.pk || raw.id || '');
     if (!id) return null;
+    const info = raw.text_post_app_info || {};
+    const num = (v) => (typeof v === 'number' ? v : null);
 
     let url = raw.canonical_url || null;
     if (!url && user.username && raw.code) {
@@ -56,9 +58,11 @@
       },
       text: (raw.caption && raw.caption.text) || '',
       media: mediaUrlsOf(raw),
-      likeCount: typeof raw.like_count === 'number' ? raw.like_count : null,
-      replyCount: raw.text_post_app_info && typeof raw.text_post_app_info.direct_reply_count === 'number'
-        ? raw.text_post_app_info.direct_reply_count : null,
+      likeCount: num(raw.like_count),
+      replyCount: num(info.direct_reply_count),
+      repostCount: num(info.repost_count),
+      quoteCount: num(info.quote_count),
+      shareCount: num(info.reshare_count), // the UI's "Share" number
       takenAt: raw.taken_at ? new Date(raw.taken_at * 1000).toISOString() : null,
       savedAt: null, // Threads does not expose the saved timestamp
       capturedAt,

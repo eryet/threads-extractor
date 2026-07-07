@@ -37,7 +37,8 @@
   // connection key -> which capture bucket it belongs to
   // mediaData = profile content (Threads AND Replies tabs share it; also fires
   // on other people's profiles — the service worker filters by username)
-  const CONN_KINDS = { saved_media: 'saved', feedData: 'feed', results: 'feed', mediaData: 'profile' };
+  // liked_media = /liked (verified 2026-07-06: same shape as saved_media)
+  const CONN_KINDS = { saved_media: 'saved', liked_media: 'liked', feedData: 'feed', results: 'feed', mediaData: 'profile' };
   const MARKERS = Object.keys(CONN_KINDS);
 
   // Replay buffer: everything emitted since page load. content.js asks for a

@@ -5,6 +5,7 @@
   'use strict';
 
   const SAVED_RE = /^\/saved\/?$/;
+  const LIKED_RE = /^\/liked\/?$/;
   // single-column feed pages that window-scroll (the "/" board layout does not)
   const FEED_RE = /^\/(for_you|following|ghost_posts|custom_feed\/[^/]+)\/?$/;
   // a profile root or its replies tab (NOT /@user/post/… permalinks)
@@ -35,6 +36,7 @@
 
   function pageKind() {
     if (SAVED_RE.test(location.pathname)) return 'saved';
+    if (LIKED_RE.test(location.pathname)) return 'liked';
     if (FEED_RE.test(location.pathname)) return 'feed';
     if (PROFILE_RE.test(location.pathname)) return 'profile';
     if (BOARD_RE.test(location.pathname)) return 'board';
@@ -65,15 +67,33 @@
     return null;
   }
 
+  // After a reload of the extension this already-injected copy of the script
+  // is orphaned: chrome.runtime is gone and every sendMessage throws. Route
+  // all sends through here so the first failure quiets this copy for good.
+  let orphaned = false;
+  function send(msg) {
+    if (!orphaned) {
+      try {
+        if (chrome.runtime && chrome.runtime.id) {
+          return chrome.runtime.sendMessage(msg).catch(() => null);
+        }
+      } catch (_) { /* invalidated between the check and the call */ }
+      orphaned = true;
+      if (scrolling) stopScroll('extension reloaded');
+      else hideBanner();
+    }
+    return Promise.resolve(null);
+  }
+
   function sendState(state, reason) {
-    chrome.runtime.sendMessage({ type: 'SCROLL_STATE', mode, state, reason }).catch(() => {});
+    send({ type: 'SCROLL_STATE', mode, state, reason });
   }
 
   // ---- on-page banner: signal that an autonomous grab owns this tab ----
   let banner = null;
   TSEI18n.init(); // resolve language early; the banner shows well after injection
 
-  const BANNER_KEYS = { saved: 'banner_saved', feed: 'banner_feed', profile: 'banner_profile', columns: 'banner_columns' };
+  const BANNER_KEYS = { saved: 'banner_saved', liked: 'banner_liked', feed: 'banner_feed', profile: 'banner_profile', columns: 'banner_columns' };
 
   function showBanner(m) {
     const label = TSEI18n.t(BANNER_KEYS[m] || 'banner_generic');
@@ -121,9 +141,9 @@
   // ---- relay batches + discovered feed/column lists from the MAIN-world script ----
   window.addEventListener('message', (ev) => {
     const d = ev.data;
-    if (ev.source !== window || !d || d.__tse !== true) return;
+    if (ev.source !== window || orphaned || !d || d.__tse !== true) return;
     if (d.type === 'TSE_FEEDS') {
-      chrome.runtime.sendMessage({ type: 'FEEDS', feeds: d.feeds || [] }).catch(() => {});
+      send({ type: 'FEEDS', feeds: d.feeds || [] });
       return;
     }
     if (d.type === 'TSE_COLUMNS') {
@@ -142,12 +162,12 @@
       path: location.pathname,
     };
     if (msg.kind === 'feed') msg.feedName = currentFeedName();
-    chrome.runtime.sendMessage(msg).then((resp) => {
+    send(msg).then((resp) => {
       // columns mode: the service worker reports which feeds hit their target
       if (mode === 'columns' && cols && resp && Array.isArray(resp.doneFeeds)) {
         for (const c of cols) if (resp.doneFeeds.includes(c.url)) c.done = true;
       }
-    }).catch(() => {});
+    });
     if (!scrolling) return;
     if (mode === 'columns') {
       if (msg.kind !== 'feed' || !cols || !msg.feedUrl) return;
@@ -272,12 +292,18 @@
     await sleep(1000);
   }
 
-  async function removeAddedColumns() {
-    const toRemove = addedCols;
-    addedCols = [];
-    // highest index first, so earlier removals don't shift later ones
-    toRemove.sort((a, b) => b.idx - a.idx);
-    for (const c of toRemove) await removeColumn(colScrollers()[c.idx]);
+  let removingCols = null; // shared so a wave hand-off can await an in-flight removal
+  function removeAddedColumns() {
+    if (!removingCols) {
+      removingCols = (async () => {
+        const toRemove = addedCols;
+        addedCols = [];
+        // highest index first, so earlier removals don't shift later ones
+        toRemove.sort((a, b) => b.idx - a.idx);
+        for (const c of toRemove) await removeColumn(colScrollers()[c.idx]);
+      })().finally(() => { removingCols = null; });
+    }
+    return removingCols;
   }
 
   async function startColumns() {
@@ -302,17 +328,18 @@
     }
     cols = bound;
     if (!cols.length) return stopScroll('could not open any feed columns');
-    chrome.runtime.sendMessage({
+    send({
       type: 'COLUMNS_INFO',
       feeds: cols.map((c) => ({ url: c.url })),
-    }).then(() => {
+    }).then((resp) => {
+      if (resp === null) return stopScroll('extension unreachable');
       if (!scrolling || mode !== 'columns') return;
       // queue registered — NOW replay so each column's embedded first
       // batch (its top posts) is counted before any scrolling
       window.postMessage({ __tse: true, type: 'TSE_RESCAN' }, window.location.origin);
       // freshly added columns render a skeleton first — give them a moment
       timer = setTimeout(stepColumns, addedCols.length ? 2500 : 800);
-    }).catch(() => stopScroll('extension unreachable'));
+    });
   }
 
   function stepColumns() {
@@ -376,10 +403,10 @@
     if (m === 'columns') desiredFeeds = Array.isArray(feeds) ? feeds : [];
     const expected = m === 'columns' ? 'board' : m;
     if (pageKind() !== expected) {
-      if (m === 'saved') {
+      if (m === 'saved' || m === 'liked') {
         // Navigate there; after the reload this script re-runs and the
         // service worker restarts the grab via CONTENT_READY.
-        location.assign('/saved');
+        location.assign(m === 'saved' ? '/saved' : '/liked');
       }
       // feed/columns mode: the service worker drives navigation itself — if
       // we're not on the right page yet, a navigation is already on its way.
@@ -407,6 +434,19 @@
     if (msg.type === 'START_SCROLL') {
       startScroll(msg.mode || 'saved', msg.feeds);
       sendResponse({ ok: true, pageKind: pageKind() });
+    } else if (msg.type === 'NEXT_WAVE') {
+      // batch waves: close this wave's columns, then open the next set of
+      // feeds on the same board — no page navigation between waves
+      (async () => {
+        scrolling = false;
+        if (timer) clearTimeout(timer);
+        timer = null;
+        cols = null;
+        await removeAddedColumns(); // waits for an in-flight teardown too
+        await sleep(600);           // let the board settle before re-binding
+        startScroll('columns', msg.feeds);
+      })();
+      sendResponse({ ok: true });
     } else if (msg.type === 'STOP_SCROLL') {
       scrolling = false;
       if (timer) clearTimeout(timer);
@@ -425,9 +465,9 @@
 
   // ---- announce readiness; the service worker decides whether to (re)start
   // scrolling here (single-feed resume, or the next stop of a multi-feed run)
-  chrome.runtime.sendMessage({
+  send({
     type: 'CONTENT_READY',
     path: location.pathname,
     kind: pageKind(),
-  }).catch(() => {});
+  });
 })();

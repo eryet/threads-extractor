@@ -63,22 +63,31 @@
       padding: 3px;
       margin-bottom: 12px;
     }
+    /* two fixed rows (label / count) so every tab is the same shape in every
+       language — a one-row layout wraps unevenly once counts + zh-TW labels
+       compete for the 320px popup width */
     .tabs button {
-      flex: 1;
-      padding: 6px 0;
+      flex: 1 1 0; min-width: 0;
+      display: flex; flex-direction: column; align-items: center; gap: 1px;
+      padding: 5px 2px 4px;
       border: 0; border-radius: 7px;
       background: transparent;
       color: var(--muted);
-      font-size: 12.5px; font-weight: 600;
+      font-family: inherit;
       cursor: pointer;
     }
     .tabs button.active { background: var(--card2); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
-    .tabs button .badge {
-      display: inline-block; margin-left: 5px;
-      padding: 1px 6px; border-radius: 99px;
-      background: #2e2e2e; color: var(--muted);
-      font-size: 10.5px; font-weight: 600;
+    .tabs button .lbl {
+      font-size: 12px; font-weight: 600;
+      max-width: 100%;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    .tabs button .badge {
+      font-size: 10px; font-weight: 600;
+      color: var(--faint);
+      font-variant-numeric: tabular-nums;
+    }
+    .tabs button.active .badge { color: var(--muted); }
 
     /* ---- stat card ---- */
     .stat {
@@ -209,6 +218,19 @@
       text-align: right;
     }
     input[type="number"]:focus { outline: 1px solid #4a4a4a; }
+    input[type="date"] {
+      margin-left: auto;
+      width: 132px;
+      padding: 6px 9px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 12px;
+      font-family: inherit;
+    }
+    input[type="date"]:focus { outline: 1px solid #4a4a4a; }
+    input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
 
     .handleRow {
       display: flex; align-items: center;
@@ -303,9 +325,10 @@
   </div>
 
   <div class="tabs">
-    <button id="tabSaved"><span data-i18n="tab_saved">Saved</span><span class="badge" id="badgeSaved">0</span></button>
-    <button id="tabFeeds"><span data-i18n="tab_feeds">Feeds</span><span class="badge" id="badgeFeeds">0</span></button>
-    <button id="tabProfile"><span data-i18n="tab_profile">Profile</span><span class="badge" id="badgeProfile">0</span></button>
+    <button id="tabSaved"><span class="lbl" data-i18n="tab_saved">Saved</span><span class="badge" id="badgeSaved">0</span></button>
+    <button id="tabLiked"><span class="lbl" data-i18n="tab_liked">Liked</span><span class="badge" id="badgeLiked">0</span></button>
+    <button id="tabFeeds"><span class="lbl" data-i18n="tab_feeds">Feeds</span><span class="badge" id="badgeFeeds">0</span></button>
+    <button id="tabProfile"><span class="lbl" data-i18n="tab_profile">Profile</span><span class="badge" id="badgeProfile">0</span></button>
   </div>
 
   <!-- ================= SAVED ================= -->
@@ -315,6 +338,15 @@
       <div class="lbl" data-i18n="lbl_saved_captured">saved posts captured</div>
       <div class="msg" id="status">ready</div>
       <div class="bar indet" id="savedBar"><div class="fill"></div></div>
+    </div>
+
+    <div class="targetRow">
+      <label for="savedLimit" data-i18n="lbl_max_posts">Max posts (blank = all)</label>
+      <input type="number" id="savedLimit" min="1" max="100000" step="1" />
+    </div>
+    <div class="targetRow">
+      <label for="savedUntil" data-i18n="lbl_until_date">Stop at posts older than</label>
+      <input type="date" id="savedUntil" />
     </div>
 
     <button id="btnStart" class="act primary" data-i18n="btn_grab_saved">Grab all saved</button>
@@ -327,6 +359,36 @@
       <button id="btnMd" class="act" disabled>MD</button>
     </div>
     <button id="btnClear" class="act ghost" data-i18n="btn_clear_saved" disabled>Clear captured data</button>
+  </div>
+
+  <!-- ================= LIKED ================= -->
+  <div class="pane" id="paneLiked">
+    <div class="stat">
+      <div class="num" id="likedCount">0</div>
+      <div class="lbl" data-i18n="lbl_liked_captured">liked posts captured</div>
+      <div class="msg" id="likedStatus">ready</div>
+      <div class="bar indet" id="likedBar"><div class="fill"></div></div>
+    </div>
+
+    <div class="targetRow">
+      <label for="likedLimit" data-i18n="lbl_max_posts">Max posts (blank = all)</label>
+      <input type="number" id="likedLimit" min="1" max="100000" step="1" />
+    </div>
+    <div class="targetRow">
+      <label for="likedUntil" data-i18n="lbl_until_date">Stop at posts older than</label>
+      <input type="date" id="likedUntil" />
+    </div>
+
+    <button id="btnLikedStart" class="act primary" data-i18n="btn_grab_liked">Grab all liked</button>
+    <button id="btnLikedStop" class="act stop" data-i18n="btn_stop" disabled>Stop</button>
+
+    <div class="exportHead" data-i18n="head_export">Export</div>
+    <div class="row">
+      <button id="btnLikedJson" class="act" disabled>JSON</button>
+      <button id="btnLikedCsv" class="act" disabled>CSV</button>
+      <button id="btnLikedMd" class="act" disabled>MD</button>
+    </div>
+    <button id="btnLikedClear" class="act ghost" data-i18n="btn_clear_liked" disabled>Clear liked data</button>
   </div>
 
   <!-- ================= FEEDS ================= -->
@@ -353,9 +415,9 @@
       <input type="number" id="feedTarget" min="1" max="2000" step="1" value="100" />
     </div>
 
-    <button id="btnColsStart" class="act primary" data-i18n="btn_batch">Grab in batch · up to 4 at once</button>
+    <button id="btnColsStart" class="act primary" data-i18n="btn_batch">Grab in batch · 4 at a time</button>
     <button id="btnFeedStart" class="act" data-i18n="btn_onebyone">Grab one by one</button>
-    <div class="hint" data-i18n="hint_batch">batch opens the selected feeds side by side and grabs them together (first 4 selected) · one by one visits each feed page in turn, any number — either way, keep the tab visible</div>
+    <div class="hint" data-i18n="hint_batch">batch grabs every selected feed, opening them side by side 4 at a time (in waves) · one by one visits each feed page in turn — either way, keep the tab visible</div>
     <button id="btnFeedStop" class="act stop" data-i18n="btn_stop_run" disabled>Stop run</button>
 
     <div class="exportHead" data-i18n="head_export">Export</div>

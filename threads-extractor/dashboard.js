@@ -19,7 +19,8 @@
     sections: new Set(),     // 'threads' | 'replies'
     authors: new Set(),      // author handles ('@x')
     media: 'all',    // all | media | text
-    minReplies: 0,
+    metric: 'replyCount',  // engagement filter: replyCount | likeCount | repostCount | shareCount
+    minMetric: 0,
     dateFrom: '',    // YYYY-MM-DD, on takenAt
     dateTo: '',
     q: '',
@@ -28,41 +29,61 @@
 
   const SRC = {
     saved: { labelKey: 'nav_saved', order: 0 },
-    feed: { labelKey: 'nav_feeds', order: 1 },
-    profile: { labelKey: 'nav_profiles', order: 2 },
+    liked: { labelKey: 'nav_liked', order: 1 },
+    feed: { labelKey: 'nav_feeds', order: 2 },
+    profile: { labelKey: 'nav_profiles', order: 3 },
   };
 
   // ---- data ----
 
   async function loadPosts() {
-    const got = await chrome.storage.local.get(['tse_posts', 'tse_feed_posts', 'tse_profile_posts']);
+    const got = await chrome.storage.local.get(['tse_posts', 'tse_liked_posts', 'tse_feed_posts', 'tse_profile_posts']);
+    // _key = the post's storage key, so "delete shown" can address it exactly
     const tag = (obj, src) =>
-      Object.values(obj || {}).map((p) => Object.assign({}, p, { _source: src }));
+      Object.entries(obj || {}).map(([k, p]) => Object.assign({}, p, { _source: src, _key: k }));
     all = tag(got.tse_posts, 'saved')
+      .concat(tag(got.tse_liked_posts, 'liked'))
       .concat(tag(got.tse_feed_posts, 'feed'))
       .concat(tag(got.tse_profile_posts, 'profile'));
+
+    // drop filter selections whose data is gone (deleted / cleared), so the
+    // view doesn't strand the user on an empty result
+    const feedsNow = new Set(), handlesNow = new Set(), authorsNow = new Set();
+    for (const p of all) {
+      if (p.feed) feedsNow.add(p.feed);
+      if (p.profileHandle) handlesNow.add(p.profileHandle);
+      if (p.author && p.author.handle) authorsNow.add(p.author.handle);
+    }
+    for (const f of [...state.feeds]) if (!feedsNow.has(f)) state.feeds.delete(f);
+    for (const h of [...state.handles]) if (!handlesNow.has(h)) state.handles.delete(h);
+    for (const a of [...state.authors]) if (!authorsNow.has(a)) state.authors.delete(a);
+    if (state.source !== 'all' && !all.some((p) => p._source === state.source)) state.source = 'all';
   }
 
   async function loadLive() {
-    const got = await chrome.storage.local.get(['tse_state', 'tse_feed_state', 'tse_profile_state']);
+    const got = await chrome.storage.local.get(['tse_state', 'tse_liked_state', 'tse_feed_state', 'tse_profile_state']);
     const s = got.tse_state || {};
+    const lk = got.tse_liked_state || {};
     const f = got.tse_feed_state || {};
     const p = got.tse_profile_state || {};
-    const busy = !!s.grabbing || !!f.running || !!p.running;
+    const busy = !!s.grabbing || !!lk.grabbing || !!f.running || !!p.running;
     $('liveDot').classList.toggle('live', busy);
     $('liveText').textContent = f.running
       ? t('live_feeds', { p: (f.queue || []).length ? (f.index || 0) + 1 + '/' + f.queue.length : '…' })
       : p.running
         ? t('live_profile', { h: p.target || '?', stage: t(p.stage === 'replies' ? 'stage_replies' : 'stage_threads') })
-        : s.grabbing
-          ? t('live_saved')
-          : t('live_idle');
+        : lk.grabbing
+          ? t('live_liked')
+          : s.grabbing
+            ? t('live_saved')
+            : t('live_idle');
   }
 
   // ---- filtering + sorting ----
 
   const orderOf = (p) => (p.savedOrder != null ? p.savedOrder
-    : p.feedOrder != null ? p.feedOrder : p.profileOrder);
+    : p.likedOrder != null ? p.likedOrder
+      : p.feedOrder != null ? p.feedOrder : p.profileOrder);
 
   function captureCmp(a, b) {
     const s = SRC[a._source].order - SRC[b._source].order;
@@ -87,11 +108,11 @@
     return true;
   }
 
-  let unknownReplyHidden = 0; // filtered out for lacking replyCount (pre-0.8.6 captures)
+  let unknownMetricHidden = 0; // filtered out for lacking the metric (older captures)
 
   function applyFilters() {
     const q = state.q.trim().toLowerCase();
-    unknownReplyHidden = 0;
+    unknownMetricHidden = 0;
     view = all.filter((p) => {
       if (!inScope(p)) return false;
       if (state.authors.size && !(p.author && state.authors.has(p.author.handle))) return false;
@@ -117,9 +138,10 @@
       }
       // last, so the "hidden for missing data" tally only counts posts that
       // passed every other filter
-      if (state.minReplies) {
-        if (p.replyCount == null) { unknownReplyHidden++; return false; }
-        if (p.replyCount < state.minReplies) return false;
+      if (state.minMetric) {
+        const v = p[state.metric];
+        if (v == null) { unknownMetricHidden++; return false; }
+        if (v < state.minMetric) return false;
       }
       return true;
     });
@@ -128,6 +150,8 @@
     else if (state.sort === 'old') view.sort((a, b) => String(a.takenAt || '').localeCompare(String(b.takenAt || '')));
     else if (state.sort === 'likes') view.sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
     else if (state.sort === 'replies') view.sort((a, b) => (b.replyCount || 0) - (a.replyCount || 0));
+    else if (state.sort === 'reposts') view.sort((a, b) => (b.repostCount || 0) - (a.repostCount || 0));
+    else if (state.sort === 'shares') view.sort((a, b) => (b.shareCount || 0) - (a.shareCount || 0));
   }
 
   // ---- sidebar facets ----
@@ -161,7 +185,7 @@
     // source nav
     const nav = $('sourceNav');
     nav.textContent = '';
-    const counts = { saved: 0, feed: 0, profile: 0 };
+    const counts = { saved: 0, liked: 0, feed: 0, profile: 0 };
     for (const p of all) counts[p._source]++;
     const rows = [['all', t('nav_all'), all.length]]
       .concat(Object.keys(SRC).map((k) => [k, t(SRC[k].labelKey), counts[k]]));
@@ -357,7 +381,8 @@
     b.className = 'badge ' + p._source;
     b.textContent = p._source === 'feed' ? (p.feed || 'feed')
       : p._source === 'profile' ? t(p.section === 'replies' ? 'badge_reply' : 'badge_thread')
-        : t('badge_saved');
+        : p._source === 'liked' ? t('badge_liked')
+          : t('badge_saved');
     b.title = p._source === 'profile' ? `${p.profileHandle || ''} · ${p.section}` : b.textContent;
     return b;
   }
@@ -398,28 +423,62 @@
       name.textContent = p.author.name;
       hd.appendChild(name);
     }
-    hd.appendChild(badgeFor(p));
+    const more = document.createElement('button');
+    more.className = 'cardMore';
+    more.textContent = '⋯';
+    more.title = t('title_post_actions');
+    more.addEventListener('click', () => openCardMenu(p, more));
+    hd.appendChild(more);
     c.appendChild(hd);
 
-    const meta = document.createElement('div');
-    meta.className = 'meta';
-    const bits = [];
-    if (p.takenAt) bits.push(p.takenAt.slice(0, 10));
-    if (p.likeCount != null) bits.push('♥ ' + fmtN(p.likeCount));
-    if (p.replyCount != null) bits.push('💬 ' + fmtN(p.replyCount));
+    // footer: date/order · spaced engagement stats · open link — built here,
+    // appended after the content so it sits at the bottom of the card
+    // Threads-style: badge + date/order sit right under the author line.
+    // Compact hides .sub and shows the same info inline in the footer (.fm).
+    const whenBits = [];
+    if (p.takenAt) whenBits.push(p.takenAt.slice(0, 10));
     const ord = orderOf(p);
-    if (ord != null) bits.push('#' + ord);
-    meta.append(bits.join(' · '));
+    if (ord != null) whenBits.push('#' + ord);
+    const whenSpan = () => {
+      const w = document.createElement('span');
+      w.className = 'when';
+      w.textContent = whenBits.join(' · ');
+      return w;
+    };
+    const sub = document.createElement('div');
+    sub.className = 'sub';
+    sub.appendChild(badgeFor(p));
+    if (whenBits.length) sub.appendChild(whenSpan());
+    c.appendChild(sub);
+
+    const foot = document.createElement('div');
+    foot.className = 'foot';
+    const fmBadge = badgeFor(p);
+    fmBadge.classList.add('fm');
+    foot.appendChild(fmBadge);
+    if (whenBits.length) {
+      const w = whenSpan();
+      w.classList.add('fm');
+      foot.appendChild(w);
+    }
+    const stat = (icon, v) => {
+      const s = document.createElement('span');
+      s.className = 'stat';
+      s.textContent = icon + ' ' + fmtN(v);
+      foot.appendChild(s);
+    };
+    if (p.likeCount != null) stat('❤️', p.likeCount);
+    if (p.replyCount != null) stat('💬', p.replyCount);
+    if (p.repostCount != null) stat('🔁', p.repostCount);
+    if (p.shareCount != null) stat('📤', p.shareCount);
     if (p.url) {
-      meta.append(' · ');
       const a = document.createElement('a');
       a.href = p.url;
       a.target = '_blank';
       a.rel = 'noreferrer';
       a.textContent = t('open_post');
-      meta.appendChild(a);
+      foot.appendChild(a);
     }
-    c.appendChild(meta);
 
     if (p.replyTo) {
       const q = document.createElement('div');
@@ -447,6 +506,7 @@
 
     if (p.text) c.appendChild(textBlock(p.text));
     if (p.media && p.media.length) c.appendChild(mediaGrid(p.media, p.url));
+    if (foot.childNodes.length) c.appendChild(foot);
     return c;
   }
 
@@ -526,7 +586,12 @@
     for (const [r, h] of maxes) {
       if (h && rowHeights[r] !== h) { rowHeights[r] = h; changed = true; }
     }
-    if (changed) updatePads();
+    if (changed) {
+      updatePads();
+      // rows shorter than EST (compact view) leave the window under-filled;
+      // re-layout extends it until the viewport + overscan is covered
+      layout();
+    }
   }
 
   let measureQueued = false;
@@ -637,21 +702,128 @@
     }
     const parts = [t('shown_posts', { n: view.length.toLocaleString() })];
     if (view.length !== all.length) parts.push(t('shown_of', { n: all.length.toLocaleString() }));
-    if (unknownReplyHidden) {
-      parts.push(t('shown_hidden_replies', { n: unknownReplyHidden.toLocaleString() }));
+    if (unknownMetricHidden) {
+      parts.push(t('shown_hidden_metric', { n: unknownMetricHidden.toLocaleString() }));
     }
     $('shown').textContent = parts.join(' ');
     const has = view.length > 0;
     $('expJson').disabled = $('expCsv').disabled = $('expMd').disabled = !has;
+    $('delShown').disabled = !has;
   }
 
   // Filter changes jump back to the top; live data reloads keep the position.
   function update(keepScroll) {
+    closeCardMenu();
     applyFilters();
     renderSidebar();
     if (!keepScroll) scroller.scrollTop = 0;
     renderAll();
   }
+
+  // ---- per-card action menu (one shared popup, anchored to the ⋯ button) ----
+
+  let menuEl = null;
+  function closeCardMenu() {
+    if (menuEl) menuEl.remove();
+    menuEl = null;
+  }
+  function openCardMenu(p, anchor) {
+    const reopen = !menuEl || menuEl.__anchor !== anchor;
+    closeCardMenu();
+    if (!reopen) return; // same ⋯ clicked while open = toggle off
+    menuEl = document.createElement('div');
+    menuEl.className = 'cardMenu';
+    menuEl.__anchor = anchor;
+
+    const open = document.createElement('button');
+    open.textContent = '↗ ' + t('menu_open_post');
+    if (p.url) {
+      open.addEventListener('click', () => {
+        window.open(p.url, '_blank', 'noreferrer');
+        closeCardMenu();
+      });
+    } else {
+      open.disabled = true;
+    }
+    menuEl.appendChild(open);
+
+    const copy = document.createElement('button');
+    copy.textContent = '🔗 ' + t('menu_copy_link');
+    if (p.url) {
+      copy.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(p.url); } catch (_) {}
+        copy.textContent = '✓ ' + t('menu_copied');
+        setTimeout(closeCardMenu, 650);
+      });
+    } else {
+      copy.disabled = true;
+    }
+    menuEl.appendChild(copy);
+
+    const del = document.createElement('button');
+    del.className = 'menuDanger';
+    del.textContent = '🗑 ' + t('menu_delete_post');
+    del.addEventListener('click', async () => {
+      closeCardMenu();
+      const who = (p.author && p.author.handle) || '@unknown';
+      if (!(await confirmDialog(t('confirm_del_post', { who })))) return;
+      try {
+        await chrome.runtime.sendMessage({ type: 'DELETE_POSTS', keys: { [p._source]: [p._key] } });
+      } catch (_) {}
+      cardCache.delete(keyOf(p));
+      await loadPosts();
+      update(true);
+    });
+    menuEl.appendChild(del);
+
+    document.body.appendChild(menuEl);
+    // below the button, right edges aligned; flip above if it would clip
+    const r = anchor.getBoundingClientRect();
+    const mw = menuEl.offsetWidth, mh = menuEl.offsetHeight;
+    menuEl.style.left = Math.max(8, Math.min(r.right - mw, window.innerWidth - mw - 8)) + 'px';
+    menuEl.style.top = (r.bottom + mh + 8 > window.innerHeight ? r.top - mh - 4 : r.bottom + 4) + 'px';
+  }
+  document.addEventListener('mousedown', (e) => {
+    if (menuEl && !menuEl.contains(e.target) && !menuEl.__anchor.contains(e.target)) closeCardMenu();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeCardMenu();
+  });
+  scroller.addEventListener('scroll', closeCardMenu, { passive: true });
+
+  // ---- centered delete-confirm modal (shared by card menu + delete-view) ----
+
+  function confirmDialog(msg) {
+    return new Promise((resolve) => {
+      const dlg = $('confirmDlg');
+      $('confirmMsg').textContent = msg;
+      const done = (v) => {
+        dlg.close();
+        $('confirmOk').onclick = $('confirmCancel').onclick = dlg.oncancel = dlg.onclick = null;
+        resolve(v);
+      };
+      $('confirmOk').onclick = () => done(true);
+      $('confirmCancel').onclick = () => done(false);
+      dlg.oncancel = (e) => { e.preventDefault(); done(false); }; // Esc
+      dlg.onclick = (e) => { if (e.target === dlg) done(false); }; // backdrop
+      dlg.showModal();
+    });
+  }
+
+  // ---- delete the current view ----
+
+  $('delShown').addEventListener('click', async () => {
+    if (!view.length) return;
+    if (!(await confirmDialog(t('confirm_delete', { n: view.length.toLocaleString() })))) return;
+    const keys = { saved: [], liked: [], feed: [], profile: [] };
+    for (const p of view) keys[p._source].push(p._key);
+    $('delShown').disabled = true;
+    try {
+      await chrome.runtime.sendMessage({ type: 'DELETE_POSTS', keys });
+    } catch (_) {}
+    await loadPosts();
+    update(true);
+  });
 
   // ---- exports (reuse lib/export.js on the filtered view) ----
 
@@ -668,7 +840,9 @@
   // CSV/MD columns depend on the shape: single-source views get that source's
   // richer layout, mixed views fall back to the generic (saved) one.
   const exportKind = () =>
-    state.source === 'feed' ? 'feed' : state.source === 'profile' ? 'profile' : undefined;
+    state.source === 'feed' ? 'feed'
+      : state.source === 'profile' ? 'profile'
+        : state.source === 'liked' ? 'liked' : undefined;
 
   $('expJson').addEventListener('click', () => download(TSEExport.toJSON(view), 'application/json', 'json'));
   $('expCsv').addEventListener('click', () => download(TSEExport.toCSV(view, exportKind()), 'text/csv', 'csv'));
@@ -733,20 +907,9 @@
     }
   });
   $('mediaSel').addEventListener('change', () => { state.media = $('mediaSel').value; update(); });
-  $('replySel').addEventListener('change', () => { state.minReplies = parseInt($('replySel').value, 10) || 0; update(); });
-  function onDateChange() {
-    state.dateFrom = $('dateFrom').value;
-    state.dateTo = $('dateTo').value;
-    $('dateClear').hidden = !state.dateFrom && !state.dateTo;
-    update();
-  }
-  $('dateFrom').addEventListener('change', onDateChange);
-  $('dateTo').addEventListener('change', onDateChange);
-  $('dateClear').addEventListener('click', () => {
-    $('dateFrom').value = '';
-    $('dateTo').value = '';
-    onDateChange();
-  });
+  $('metricSel').addEventListener('change', () => { state.metric = $('metricSel').value; update(); });
+  $('minSel').addEventListener('change', () => { state.minMetric = parseInt($('minSel').value, 10) || 0; update(); });
+  // date-range picker wired in init, after TSEI18n resolves the language
   $('sortSel').addEventListener('change', () => { state.sort = $('sortSel').value; update(); });
   $('layGrid').addEventListener('click', () => setLayout('grid'));
   $('layList').addEventListener('click', () => setLayout('list'));
@@ -766,8 +929,8 @@
   let reloadTimer = null;
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
-    if (changes.tse_state || changes.tse_feed_state || changes.tse_profile_state) loadLive();
-    if (changes.tse_posts || changes.tse_feed_posts || changes.tse_profile_posts) {
+    if (changes.tse_state || changes.tse_liked_state || changes.tse_feed_state || changes.tse_profile_state) loadLive();
+    if (changes.tse_posts || changes.tse_liked_posts || changes.tse_feed_posts || changes.tse_profile_posts) {
       clearTimeout(reloadTimer);
       reloadTimer = setTimeout(async () => {
         await loadPosts();
@@ -787,6 +950,19 @@
   (async () => {
     await TSEI18n.init();
     TSEI18n.apply();
+    TSEDateRange.init({
+      button: $('dateBtn'),
+      label: $('dateLbl'),
+      clearBtn: $('dateClear'),
+      pop: $('datePop'),
+      t,
+      locale: TSEI18n.lang === 'zh_TW' ? 'zh-TW' : 'en',
+      onChange(from, to) {
+        state.dateFrom = from;
+        state.dateTo = to;
+        update();
+      },
+    });
     try {
       const got = await chrome.storage.local.get('tse_lang');
       $('langSel').value = got.tse_lang || 'auto';

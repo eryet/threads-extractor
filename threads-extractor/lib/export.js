@@ -9,7 +9,8 @@
     // profileOrder; 1 = top). Posts captured before order fields existed fall
     // back to newest-posted-first at the end.
     const orderOf = (p) => (p.savedOrder != null ? p.savedOrder
-      : p.feedOrder != null ? p.feedOrder : p.profileOrder);
+      : p.likedOrder != null ? p.likedOrder
+        : p.feedOrder != null ? p.feedOrder : p.profileOrder);
     const feedGroup = (p) => (p.feedIndex != null ? p.feedIndex : p.sectionIndex) || 0;
     return posts.slice().sort((a, b) => {
       // profile grabs: group by whose profile, then section (threads<replies)
@@ -39,28 +40,33 @@
   function toCSV(posts, kind) {
     const feed = kind === 'feed';
     const profile = kind === 'profile';
+    const liked = kind === 'liked';
+    const ENGAGEMENT = ['likeCount', 'replyCount', 'repostCount', 'quoteCount', 'shareCount'];
     const header = profile
-      ? ['profile', 'section', 'profileOrder', 'id', 'url', 'text', 'takenAt', 'likeCount', 'replyCount', 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
+      ? ['profile', 'section', 'profileOrder', 'id', 'url', 'text', 'takenAt', ...ENGAGEMENT, 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
       : feed
-        ? ['feed', 'feedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', 'likeCount', 'replyCount', 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
-        : ['savedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', 'savedAt', 'likeCount', 'replyCount', 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt'];
+        ? ['feed', 'feedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', ...ENGAGEMENT, 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
+        : liked
+          ? ['likedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', ...ENGAGEMENT, 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
+          : ['savedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', 'savedAt', ...ENGAGEMENT, 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt'];
     const rows = [header.join(',')];
     for (const p of sortPosts(posts)) {
       const rt = p.replyTo || {};
+      const engagement = ENGAGEMENT.map((k) => p[k]);
       let cells;
       if (profile) {
-        cells = [p.profileHandle, p.section, p.profileOrder, p.id, p.url, p.text, p.takenAt, p.likeCount, p.replyCount,
+        cells = [p.profileHandle, p.section, p.profileOrder, p.id, p.url, p.text, p.takenAt, ...engagement,
           rt.author && rt.author.handle, rt.url, rt.text];
       } else {
-        cells = feed ? [p.feed, p.feedOrder] : [p.savedOrder];
+        cells = feed ? [p.feed, p.feedOrder] : [liked ? p.likedOrder : p.savedOrder];
         cells.push(
           p.id, p.url,
           p.author && p.author.handle,
           p.author && p.author.name,
           p.text, p.takenAt
         );
-        if (!feed) cells.push(p.savedAt);
-        cells.push(p.likeCount, p.replyCount, rt.author && rt.author.handle, rt.url, rt.text);
+        if (!feed && !liked) cells.push(p.savedAt);
+        cells.push(...engagement, rt.author && rt.author.handle, rt.url, rt.text);
       }
       cells.push((p.media || []).join(' | '), p.capturedAt);
       rows.push(cells.map(csvCell).join(','));
@@ -75,7 +81,8 @@
     const grouped = feed || profile;
     const sorted = sortPosts(posts);
     const out = [
-      profile ? '# Threads profile posts' : feed ? '# Threads feed posts' : '# Threads saved posts',
+      profile ? '# Threads profile posts' : feed ? '# Threads feed posts'
+        : kind === 'liked' ? '# Threads liked posts' : '# Threads saved posts',
       '',
       `${sorted.length} posts · exported ${new Date().toISOString().slice(0, 10)}`,
       '',

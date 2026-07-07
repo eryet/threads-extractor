@@ -19,10 +19,11 @@ no backend, no accounts, no analytics, and nothing ever leaves your machine.
   /saved is kept).
 - **Feeds** — the top N posts of any feed (For you / Following / Ghost posts
   / your custom feeds / community feeds), either **one by one** (any number
-  of feeds, navigated in turn) or **in batch**: up to 4 feeds opened side by
-  side as board columns and grabbed **in parallel**, with per-feed
-  attribution from GraphQL request variables. The extension opens the
-  columns itself and removes the ones it added when the run ends.
+  of feeds, navigated in turn) or **in batch**: feeds opened side by side as
+  board columns and grabbed **in parallel**, 4 at a time in waves until every
+  selected feed is done, with per-feed attribution from GraphQL request
+  variables. The extension opens the columns itself and removes the ones it
+  added when each wave ends.
 - **Profiles** — anyone's public threads and replies (replies include the
   full parent post being replied to).
 - Every post records author, text, media URLs, like count, **reply count**,
@@ -46,6 +47,10 @@ no backend, no accounts, no analytics, and nothing ever leaves your machine.
 - **Import** earlier JSON exports back in via the dashboard — exports double
   as backups. Duplicates are skipped; imported feed posts survive future
   runs.
+- **Delete this view** from the dashboard: remove exactly the posts the
+  current filters show (a feed, a profile, an author, a date range, a
+  search), two-click confirmed — finer control than the popup's per-tab
+  Clear buttons.
 
 ## Install
 

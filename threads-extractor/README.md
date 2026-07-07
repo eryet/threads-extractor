@@ -2,7 +2,7 @@
 
 Personal MV3 Chrome extension that grabs **your own** Threads data — saved
 (bookmarked) posts, the top N posts of any feed (For you / Following / Ghost
-posts / custom feeds, one by one or up to 4 at once as board columns), and
+posts / custom feeds, one by one or in waves of 4 board columns), and
 profiles (threads + replies) — then lets you browse it all in a local
 dashboard and export JSON / CSV / Markdown. Everything stays local — no
 backend, no accounts, no data leaves your machine.
@@ -53,13 +53,13 @@ only from the tab driving it — normal browsing is never hoovered up. A post
 appearing in two selected feeds is kept once per feed, so per-feed rankings
 stay complete.
 
-#### Board columns (parallel, max 4)
+#### Board columns (parallel, 4 at a time in waves)
 
-**Grab selected in columns** uses the board home (`/`) instead of navigating
-feed→feed: it opens each selected feed as a board column (first 4 of the
-selection — hard-capped in code), scrolls all of them at the same time, and
-removes the columns it added when the run ends, so 4 feeds take roughly as
-long as 1. Feeds you already had pinned as columns are reused and left alone.
+**Grab in batch** uses the board home (`/`) instead of navigating feed→feed:
+it opens selected feeds as board columns, 4 at a time, scrolls all of them at
+the same time, then closes that wave's columns and opens the next 4 — until
+every selected feed is grabbed. The popup shows wave progress ("batch 2/3").
+Feeds you already had pinned as columns are reused and left alone.
 
 The add/remove automation drives Threads' own "Add a column" → Feeds →
 &lt;name&gt; and column "More" → "Remove column" menus with synthesized pointer
@@ -115,6 +115,10 @@ storage directly (no export needed) and updates live while a grab is running.
 - **Import**: load earlier JSON exports back in (multiple files ok) — exports
   double as backups. Duplicates are skipped, and imported feed posts survive
   future runs (which otherwise start from a clean slate).
+- **Delete this view**: removes exactly what the current filters show (one
+  feed, one profile, an author, a date range, a search — any combination),
+  with a two-click confirm. Finer-grained than the popup's per-tab Clear
+  buttons; can't be undone, so export first if unsure.
 
 Media are shown from Meta's signed CDN URLs, so image thumbnails only render
 while the URLs are still valid (a few days); expired ones collapse to a

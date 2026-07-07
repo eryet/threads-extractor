@@ -118,6 +118,8 @@
     }
     .exportRow button:hover { background: var(--card2); }
     .exportRow button:disabled { opacity: 0.4; cursor: default; }
+    #delShown { color: #d9928c; }
+    #delShown:not(:disabled):hover { color: var(--danger); border-color: rgba(255, 123, 114, 0.5); background: #170f0e; }
     .sideNote { font-size: 10.5px; color: var(--faint); margin: 8px 4px 0; line-height: 1.5; }
 
     /* ================= main ================= */
@@ -142,33 +144,85 @@
     .topbar select { width: auto; }
     .topbar { flex-wrap: wrap; }
     .dateRange {
-      display: flex; align-items: center; gap: 4px;
+      position: relative;
+      display: flex; align-items: center; gap: 2px;
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 9px;
       padding: 0 6px;
     }
-    .dateRange .sep { color: var(--faint); font-size: 12px; }
-    .dateRange input[type="date"] {
-      width: 118px;
-      padding: 7px 2px;
-      border: 0;
-      background: transparent;
+    .dateBtn {
+      display: flex; align-items: center; gap: 6px;
+      border: 0; background: transparent;
       color: var(--text);
-      font-size: 12px;
-      font-family: inherit;
-    }
-    .dateRange input[type="date"]:focus { outline: none; }
-    .dateRange input[type="date"]::-webkit-calendar-picker-indicator {
-      filter: invert(0.7);
+      font-size: 12px; font-family: inherit;
+      padding: 7px 3px;
       cursor: pointer;
+      white-space: nowrap;
     }
-    .dateRange button {
+    .dateBtn .cal { font-size: 12.5px; }
+    .dateBtn .ph { color: var(--faint); }
+    #dateClear {
       border: 0; background: transparent;
       color: var(--faint); font-size: 15px;
       cursor: pointer; padding: 0 3px;
     }
-    .dateRange button:hover { color: var(--danger); }
+    #dateClear:hover { color: var(--danger); }
+
+    /* ---- calendar popover ---- */
+    .datePop {
+      position: absolute; top: calc(100% + 8px); left: 0; z-index: 30;
+      display: flex;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 14px 38px rgba(0, 0, 0, 0.55);
+      padding: 10px;
+    }
+    .datePop[hidden] { display: none; }
+    .dpPresets {
+      display: flex; flex-direction: column; gap: 2px;
+      padding-right: 10px; margin-right: 10px;
+      border-right: 1px solid var(--border);
+      min-width: 106px;
+    }
+    .dpPresets button {
+      border: 0; background: transparent;
+      color: var(--muted); font-size: 12px; font-family: inherit;
+      text-align: left; padding: 6px 8px;
+      border-radius: 7px; cursor: pointer; white-space: nowrap;
+    }
+    .dpPresets button:hover { background: var(--card2); color: var(--text); }
+    .dpHead { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+    .dpArr {
+      width: 26px; height: 26px; flex: none;
+      border: 1px solid var(--border); border-radius: 7px;
+      background: var(--card2); color: var(--muted);
+      font-size: 13px; line-height: 1; cursor: pointer; padding: 0;
+    }
+    .dpArr:hover { color: var(--text); border-color: #3f3f3f; }
+    .dpTitles { flex: 1; display: flex; }
+    .dpTitles b { flex: 1; text-align: center; font-size: 12.5px; font-weight: 650; }
+    .dpMonths { display: flex; gap: 16px; }
+    .dpGrid { display: grid; grid-template-columns: repeat(7, 30px); gap: 2px; }
+    .dpWd {
+      font-size: 10px; color: var(--faint);
+      text-align: center; padding: 3px 0 5px;
+      text-transform: uppercase;
+    }
+    .dpDay {
+      width: 30px; height: 28px; padding: 0;
+      border: 0; border-radius: 7px;
+      background: transparent; color: var(--text);
+      font-size: 11.5px; font-family: inherit;
+      cursor: pointer;
+    }
+    .dpDay:hover { background: var(--card2); box-shadow: inset 0 0 0 1px #3f3f3f; }
+    .dpDay.dpToday { box-shadow: inset 0 0 0 1px #4a4a4a; }
+    .dpDay.dpFuture { color: var(--faint); }
+    .dpDay.dpInR { background: rgba(243, 243, 243, 0.1); border-radius: 0; }
+    .dpDay.dpSel { background: var(--text); color: var(--bg); font-weight: 700; }
+    .dpFoot { margin-top: 8px; font-size: 11px; color: var(--faint); }
     .shown { margin-left: auto; font-size: 12px; color: var(--faint); white-space: nowrap; }
     .layoutToggle {
       display: flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; flex: none;
@@ -203,7 +257,7 @@
     #grid.compact .card {
       display: grid;
       grid-template-columns: 56px 1fr;
-      grid-template-areas: "media hd" "media txt" "media meta";
+      grid-template-areas: "media hd" "media txt" "media foot";
       column-gap: 12px;
       row-gap: 2px;
       padding: 9px 12px;
@@ -211,10 +265,17 @@
     }
     #grid.compact .card:not(:has(.mediaWrap)) {
       grid-template-columns: 1fr;
-      grid-template-areas: "hd" "txt" "meta";
+      grid-template-areas: "hd" "txt" "foot";
     }
     #grid.compact .card .hd { grid-area: hd; }
-    #grid.compact .card .meta { grid-area: meta; margin-top: 0; }
+    #grid.compact .card .foot {
+      grid-area: foot;
+      margin-top: 0; padding-top: 0; border-top: 0;
+      gap: 3px 10px;
+    }
+    /* compact: one dense line — hide the sub row, show its footer mirror */
+    #grid.compact .card .sub { display: none; }
+    #grid.compact .card .foot .fm { display: inline-block; }
     #grid.compact .card .txt {
       grid-area: txt;
       margin-top: 0;
@@ -265,14 +326,16 @@
       contain: content;
       content-visibility: auto;
       contain-intrinsic-size: auto 340px;
+      transition: border-color 0.12s;
     }
-    .card .hd { display: flex; align-items: baseline; gap: 7px; }
+    .card:hover { border-color: #3a3a3a; }
+    .card .hd { display: flex; align-items: baseline; gap: 7px; margin-bottom: 1px; }
     .card .handle { font-weight: 650; cursor: pointer; white-space: nowrap; }
     .card .handle:hover { text-decoration: underline; }
     .card .name { color: var(--faint); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .badge {
-      margin-left: auto; flex: none;
-      font-size: 10px; font-weight: 650;
+      flex: none;
+      font-size: 9.5px; font-weight: 650;
       text-transform: uppercase; letter-spacing: 0.05em;
       color: var(--muted);
       background: #262626;
@@ -280,12 +343,107 @@
       padding: 2px 8px;
       max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    /* Threads-style pill: dark rounded capsule with the three dots */
+    .card .cardMore {
+      flex: none; margin-left: auto;
+      align-self: center;
+      width: 34px; height: 21px;
+      border: 0; border-radius: 99px; padding: 0;
+      background: #242424;
+      color: var(--muted);
+      font-size: 14px; font-weight: 700; line-height: 0;
+      display: grid; place-items: center;
+      cursor: pointer;
+      transition: background 0.12s, transform 0.08s;
+    }
+    .card .cardMore:hover { background: #313131; color: var(--text); }
+    .card .cardMore:active { transform: scale(0.94); }
+
+    .cardMenu {
+      position: fixed; z-index: 99;
+      min-width: 172px;
+      background: var(--card2);
+      border: 1px solid #383838;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+      padding: 4px;
+    }
+    .cardMenu button {
+      display: block; width: 100%;
+      border: 0; border-radius: 7px;
+      background: transparent;
+      color: var(--text);
+      font-size: 12.5px; font-family: inherit;
+      text-align: left;
+      padding: 8px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .cardMenu button:hover { background: #2e2e2e; }
+    .cardMenu button:disabled { color: var(--faint); cursor: default; background: transparent; }
+    .cardMenu .menuDanger { color: #d9928c; }
+    .cardMenu .menuDanger:hover { background: rgba(255, 123, 114, 0.12); color: var(--danger); }
+
+    /* ---- centered delete-confirm modal ---- */
+    #confirmDlg {
+      border: 1px solid #3a3a3a;
+      border-radius: 14px;
+      background: var(--card);
+      color: var(--text);
+      padding: 20px;
+      width: 340px; max-width: calc(100vw - 40px);
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.65);
+    }
+    #confirmDlg::backdrop { background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(2px); }
+    #confirmDlg h2 { margin: 0 0 8px; font-size: 14px; font-weight: 700; }
+    #confirmMsg { font-size: 13px; line-height: 1.55; color: var(--muted); margin-bottom: 18px; word-break: break-word; }
+    .dlgRow { display: flex; gap: 8px; justify-content: flex-end; }
+    .dlgRow button {
+      padding: 8px 18px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--card2);
+      color: var(--text);
+      font-size: 12.5px; font-weight: 550; font-family: inherit;
+      cursor: pointer;
+    }
+    .dlgRow button:hover { background: #2a2a2a; }
+    #confirmOk {
+      background: #b23e35; border-color: #b23e35; color: #fff; font-weight: 650;
+    }
+    #confirmOk:hover { background: #c74a40; }
     .badge.saved { color: #9ecbff; background: rgba(88, 166, 255, 0.13); }
+    .badge.liked { color: #ff9ab0; background: rgba(255, 105, 140, 0.13); }
     .badge.feed { color: #bff3d4; background: rgba(61, 220, 132, 0.13); }
     .badge.profile { color: #ffd699; background: rgba(255, 178, 74, 0.13); }
-    .card .meta { color: var(--faint); font-size: 11.5px; margin-top: 2px; }
-    .card .meta a { color: var(--faint); text-decoration: none; }
-    .card .meta a:hover { color: var(--text); }
+    /* badge + date directly under the author line, like Threads */
+    .card .sub {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 3px;
+      font-size: 11px;
+    }
+    .card .foot {
+      display: flex; flex-wrap: wrap; align-items: center;
+      gap: 3px 12px;
+      margin-top: 10px;
+      padding-top: 8px;
+      border-top: 1px solid #232323;
+      font-size: 11.5px;
+      color: var(--muted);
+    }
+    /* .fm = badge/date mirrored into the footer, used by compact only */
+    .card .foot .fm { display: none; }
+    .card .foot .when { color: var(--faint); white-space: nowrap; }
+    .card .foot .stat { white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .card .foot a {
+      margin-left: auto;
+      color: var(--muted);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      text-decoration-color: #3f3f3f;
+      white-space: nowrap;
+    }
+    .card .foot a:hover { color: var(--text); text-decoration-color: var(--muted); }
 
     .card .txt { margin-top: 8px; white-space: pre-wrap; word-wrap: break-word; }
     .card .txt.clamp {
@@ -411,6 +569,16 @@
       Media URLs are signed by Meta's CDN and expire after a few days.
     </div>
 
+    <div class="secHead" data-i18n="sec_delete">Delete</div>
+    <div class="exportRow">
+      <button id="delShown" disabled data-i18n="btn_delete_shown">Delete shown posts…</button>
+    </div>
+    <div class="sideNote" data-i18n="note_delete">
+      Removes exactly what the current filters show — narrow it down with a
+      feed, profile, author, date range or search first. Can't be undone;
+      export first if unsure.
+    </div>
+
     <div class="secHead" data-i18n="sec_import">Import</div>
     <div class="exportRow">
       <button id="impBtn" data-i18n="btn_import">Import export JSON…</button>
@@ -444,18 +612,28 @@
         <option value="text" data-i18n="opt_text_only">Text only</option>
       </select>
       <div class="dateRange" data-i18n-title="title_date_range" title="posted between (takenAt)">
-        <input type="date" id="dateFrom" />
-        <span class="sep">–</span>
-        <input type="date" id="dateTo" />
+        <button id="dateBtn" class="dateBtn">
+          <span class="cal">📅</span>
+          <span id="dateLbl" class="ph" data-i18n="btn_date_range">Date range</span>
+        </button>
         <button id="dateClear" data-i18n-title="title_clear_dates" title="clear date range" hidden>×</button>
+        <div id="datePop" class="datePop" hidden></div>
       </div>
-      <select id="replySel" data-i18n-title="title_min_replies" title="minimum reply count">
-        <option value="0" data-i18n="opt_reply_any">💬 any</option>
-        <option value="1">💬 ≥ 1</option>
-        <option value="5">💬 ≥ 5</option>
-        <option value="10">💬 ≥ 10</option>
-        <option value="50">💬 ≥ 50</option>
-        <option value="100">💬 ≥ 100</option>
+      <select id="metricSel" data-i18n-title="title_min_metric" title="engagement filter">
+        <option value="replyCount" data-i18n="metric_replies">💬 replies</option>
+        <option value="likeCount" data-i18n="metric_likes">❤️ likes</option>
+        <option value="repostCount" data-i18n="metric_reposts">🔁 reposts</option>
+        <option value="shareCount" data-i18n="metric_shares">📤 shares</option>
+      </select>
+      <select id="minSel" data-i18n-title="title_min_metric" title="engagement filter">
+        <option value="0" data-i18n="opt_any">any</option>
+        <option value="1">≥ 1</option>
+        <option value="5">≥ 5</option>
+        <option value="10">≥ 10</option>
+        <option value="50">≥ 50</option>
+        <option value="100">≥ 100</option>
+        <option value="500">≥ 500</option>
+        <option value="1000">≥ 1000</option>
       </select>
       <select id="sortSel">
         <option value="capture" data-i18n="opt_sort_capture">Capture order</option>
@@ -463,6 +641,8 @@
         <option value="old" data-i18n="opt_sort_old">Oldest posted</option>
         <option value="likes" data-i18n="opt_sort_likes">Most liked</option>
         <option value="replies" data-i18n="opt_sort_replies">Most replied</option>
+        <option value="reposts" data-i18n="opt_sort_reposts">Most reposted</option>
+        <option value="shares" data-i18n="opt_sort_shares">Most shared</option>
       </select>
       <div class="layoutToggle">
         <button id="layGrid" class="active" data-i18n-title="title_grid" title="Grid">▦</button>
@@ -474,8 +654,18 @@
     <div id="grid"></div>
   </main>
 
+  <dialog id="confirmDlg">
+    <h2 data-i18n="dlg_delete_title">Delete</h2>
+    <div id="confirmMsg"></div>
+    <div class="dlgRow">
+      <button id="confirmCancel" data-i18n="btn_cancel" autofocus>Cancel</button>
+      <button id="confirmOk" data-i18n="btn_delete">Delete</button>
+    </div>
+  </dialog>
+
   <script src="lib/i18n.js"></script>
   <script src="lib/export.js"></script>
+  <script src="lib/daterange.js"></script>
   <script src="dashboard.js"></script>
 </body>
 </html>
