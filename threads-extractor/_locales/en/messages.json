@@ -239,8 +239,20 @@
   "menu_copied": {
     "message": "Link copied"
   },
+  "menu_copy_text": {
+    "message": "Copy text"
+  },
+  "menu_copy_md": {
+    "message": "Copy as Markdown"
+  },
+  "menu_copied_text": {
+    "message": "Copied"
+  },
   "menu_delete_post": {
     "message": "Delete post…"
+  },
+  "btn_reset_filters": {
+    "message": "Clear all filters"
   },
   "note_delete": {
     "message": "Removes exactly what the current filters show — narrow it down with a feed, profile, author, date range or search first. Can't be undone; export first if unsure."

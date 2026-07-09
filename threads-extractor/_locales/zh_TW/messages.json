@@ -239,8 +239,20 @@
   "menu_copied": {
     "message": "已複製連結"
   },
+  "menu_copy_text": {
+    "message": "複製內文"
+  },
+  "menu_copy_md": {
+    "message": "複製為 Markdown"
+  },
+  "menu_copied_text": {
+    "message": "已複製"
+  },
   "menu_delete_post": {
     "message": "刪除貼文…"
+  },
+  "btn_reset_filters": {
+    "message": "清除所有篩選"
   },
   "note_delete": {
     "message": "只會刪除目前篩選顯示的貼文 — 可先用動態、個人檔案、作者、日期範圍或搜尋來縮小範圍。刪除後無法復原；不確定時請先匯出。"

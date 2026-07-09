@@ -752,6 +752,14 @@
       const e = document.createElement('div');
       e.className = 'empty';
       e.innerHTML = all.length ? t('empty_no_match') : t('empty_no_capture');
+      if (all.length && hasActiveFilters()) {
+        const btn = document.createElement('button');
+        btn.className = 'emptyReset';
+        btn.textContent = t('btn_reset_filters');
+        btn.addEventListener('click', resetFilters);
+        e.appendChild(document.createElement('br'));
+        e.appendChild(btn);
+      }
       grid.appendChild(e);
     } else {
       layout();
@@ -762,10 +770,29 @@
       parts.push(t('shown_hidden_metric', { n: unknownMetricHidden.toLocaleString() }));
     }
     $('shown').textContent = parts.join(' ');
+    $('resetFilters').hidden = !hasActiveFilters();
     const has = view.length > 0;
     $('expJson').disabled = $('expCsv').disabled = $('expMd').disabled = !has;
     $('delShown').disabled = !has;
   }
+
+  // ---- reset all filters ----
+
+  function hasActiveFilters() {
+    return state.source !== 'all' || state.feeds.size > 0 || state.handles.size > 0
+      || state.sections.size > 0 || state.authors.size > 0 || state.media !== 'all'
+      || state.minMetric > 0 || !!state.dateFrom || !!state.dateTo || !!state.q.trim();
+  }
+
+  function resetFilters() {
+    state.source = 'all';
+    state.feeds.clear(); state.handles.clear(); state.sections.clear(); state.authors.clear();
+    state.media = 'all'; state.minMetric = 0; state.q = '';
+    $('q').value = ''; $('mediaSel').value = 'all'; $('minSel').value = '0';
+    // last: clearing the date range commits and fires onChange -> update()
+    $('dateClear').click();
+  }
+  $('resetFilters').addEventListener('click', resetFilters);
 
   // Filter changes jump back to the top; live data reloads keep the position.
   function update(keepScroll) {
@@ -777,6 +804,31 @@
   }
 
   // ---- per-card action menu (one shared popup, anchored to the ⋯ button) ----
+
+  // one post as standalone Markdown, same shape as lib/export.js toMarkdown
+  function postMarkdown(p) {
+    const handle = (p.author && p.author.handle) || '@unknown';
+    const name = (p.author && p.author.name) ? ` (${p.author.name})` : '';
+    const meta = [];
+    if (p.takenAt) meta.push(p.takenAt.slice(0, 10));
+    if (p.url) meta.push(`[open post](${p.url})`);
+    const out = [`**${handle}${name}**${meta.length ? ' · ' + meta.join(' · ') : ''}`, ''];
+    if (p.replyTo) {
+      const rt = p.replyTo;
+      const rtHandle = (rt.author && rt.author.handle) || '@unknown';
+      const head = [`**replying to ${rt.url ? `[${rtHandle}](${rt.url})` : rtHandle}**`];
+      if (rt.takenAt) head.push(rt.takenAt.slice(0, 10));
+      out.push('> ' + head.join(' · '));
+      for (const line of String(rt.text || '').split('\n')) out.push('> ' + line);
+      out.push('');
+    }
+    if (p.text) out.push(p.text, '');
+    if (p.media && p.media.length) {
+      for (const m of p.media) out.push(`- media: <${m}>`);
+      out.push('');
+    }
+    return out.join('\n').trim() + '\n';
+  }
 
   let menuEl = null;
   function closeCardMenu() {
@@ -826,6 +878,30 @@
       copy.disabled = true;
     }
     menuEl.appendChild(copy);
+
+    const copiedFx = (btn) => {
+      btn.firstChild.textContent = '✓';
+      btn.lastChild.textContent = t('menu_copied_text');
+      setTimeout(closeCardMenu, 650);
+    };
+
+    const copyTxt = menuBtn('📋', t('menu_copy_text'));
+    if (p.text) {
+      copyTxt.addEventListener('click', async () => {
+        try { await navigator.clipboard.writeText(p.text); } catch (_) {}
+        copiedFx(copyTxt);
+      });
+    } else {
+      copyTxt.disabled = true;
+    }
+    menuEl.appendChild(copyTxt);
+
+    const copyMd = menuBtn('📝', t('menu_copy_md'));
+    copyMd.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(postMarkdown(p)); } catch (_) {}
+      copiedFx(copyMd);
+    });
+    menuEl.appendChild(copyMd);
 
     const del = menuBtn('🗑', t('menu_delete_post'));
     del.className = 'menuDanger';
@@ -893,12 +969,26 @@
 
   // ---- exports (reuse lib/export.js on the filtered view) ----
 
+  // when the filters pin a single feed / profile / author (or a source),
+  // put it in the filename so exports stay tellable-apart in Downloads
+  function exportSuffix() {
+    const one = (s) => (s.size === 1 ? [...s][0] : null);
+    let part = one(state.feeds) || one(state.handles) || one(state.authors)
+      || (state.source !== 'all' ? state.source : null);
+    if (!part) return '';
+    part = String(part).replace(/^@/, '')
+      .replace(/[^\p{L}\p{N}_-]+/gu, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40);
+    return part ? '-' + part : '';
+  }
+
   function download(text, mime, ext) {
     const blob = new Blob([text], { type: mime + ';charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const stamp = new Date().toISOString().slice(0, 10);
     chrome.downloads.download(
-      { url, filename: `threads-dashboard-${stamp}.${ext}`, saveAs: true },
+      { url, filename: `threads-dashboard${exportSuffix()}-${stamp}.${ext}`, saveAs: true },
       () => setTimeout(() => URL.revokeObjectURL(url), 60000)
     );
   }
