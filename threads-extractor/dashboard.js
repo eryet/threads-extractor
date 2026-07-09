@@ -908,6 +908,9 @@
     grabbingLikers.delete(gid);
     if (!r || !r.ok) { toast((r && r.error) || t('likers_failed'), true); return; }
     toast(r.count ? t('likers_done', { n: r.count }) : t('likers_none'));
+    // the card's cached DOM was built without likers, and adding them doesn't
+    // change its cache key — evict it so the panel actually renders
+    cardCache.delete(keyOf(p));
     await loadPosts();
     update(true);
   }
