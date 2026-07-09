@@ -303,7 +303,7 @@
     "message": "部分名單"
   },
   "likers_partial_hint": {
-    "message": "Threads 只會列出已加入 Threads 的帳號，因此列出的帳號可能少於總數。"
+    "message": "依最新排序抓取。名單很大時會在安全上限停止，且讚數／轉發數會隨新互動持續變動，因此抓到的數量可能與總數不同。"
   },
   "likers_copy": {
     "message": "複製帳號"

@@ -471,7 +471,7 @@
       const engTimer = setTimeout(() => {
         const settle = pendingEngagers.get(reqId);
         if (settle) { pendingEngagers.delete(reqId); settle({ ok: false, error: 'Timed out — keep the Threads tab loaded and try again.' }); }
-      }, 30000);
+      }, 180000); // large lists page through many requests
       pendingEngagers.set(reqId, (res) => {
         clearTimeout(engTimer);
         sendResponse({ ok: !!res.ok, engagers: res.engagers || [], partial: !!res.partial, error: res.error || null });

@@ -42,17 +42,21 @@
   const MARKERS = Object.keys(CONN_KINDS);
 
   // ---- Post engagers: who liked / reposted a post (verified live 2026-07-09) ----
-  // The post's "View activity" panel loads them via BarcelonaFeedbackHubTabQuery,
-  // connection data.feedback_hub_tab_items:
-  //   variables: { post_id: <numeric pk>, tab_type: 'like'|'repost', sort_type: 'default', + relay providers }
-  //   node: { actor: {username, pk}, extra: {icon_name, context}, timestamp }, page_info
-  // The like COUNT can exceed the listed likers (Threads seems to list only
-  // accounts that onboarded to Threads), so results are a partial subset.
+  // The post's "View activity" → Likes/Reposts list. The DEFAULT sort caps at
+  // ~100 with no pagination (BarcelonaFeedbackHubTabQuery); the "Most recent"
+  // sort uses a paginating refetch query that returns the WHOLE list, so we use
+  // that instead:
+  //   query BarcelonaFeedbackHubTabContentRefetchableQuery  doc_id 27564308013202368
+  //   connection data.feedback_hub_tab_items
+  //   variables: { post_id: <numeric pk>, tab_type: 'like'|'repost',
+  //     sort_type: 'most_recent', first: <n>, after: <cursor>, + relay providers }
+  //   node: { actor: {username, pk}, extra: {context}, timestamp }, page_info
+  //   (the server caps page size at ~100 regardless of `first`)
   // doc_id rotates across Meta deploys; we self-heal by caching the live doc_id
-  // whenever the user opens any post's activity panel, and fall back to this
+  // whenever the user opens a post's "Most recent" list, and fall back to this
   // constant otherwise (re-derive via DevTools if it ever 400s).
-  const ENGAGERS_FRIENDLY = 'BarcelonaFeedbackHubTabQuery';
-  const ENGAGERS_DOC_ID = '36463653833282720';
+  const ENGAGERS_FRIENDLY = 'BarcelonaFeedbackHubTabContentRefetchableQuery';
+  const ENGAGERS_DOC_ID = '27564308013202368';
   const ENGAGERS_PROVIDERS = {
     BarcelonaShouldShowFediverseM075Featuresrelayprovider: true,
     BarcelonaIsLoggedInrelayprovider: true,
@@ -311,11 +315,15 @@
     const seen = new Set();
     const engagers = [];
     let after = null, pages = 0, partial = false;
-    const MAX_PAGES = 20, MAX_TOTAL = 2000;
+    // ~100 per page (server-capped), so these bound very large/viral posts;
+    // partial is flagged if we stop before Threads runs out
+    const MAX_PAGES = 120, MAX_TOTAL = 10000, PAGE_SIZE = 100;
     while (pages < MAX_PAGES && engagers.length < MAX_TOTAL) {
       pages++;
-      const vars = Object.assign({ post_id: pid, sort_type: 'default', tab_type: tab }, providers);
-      if (after) vars.after = after; // only on page 2+, so page 1 uses the known-good variable set
+      // most_recent + first/after paginates the full list (default sort caps ~100)
+      const vars = Object.assign(
+        { post_id: pid, sort_type: 'most_recent', tab_type: tab, first: PAGE_SIZE, after: after || null },
+        providers);
       const params = new URLSearchParams(gqlTemplate.body);
       params.set('fb_api_req_friendly_name', ENGAGERS_FRIENDLY);
       params.set('doc_id', liveEngagersDocId || ENGAGERS_DOC_ID);
@@ -364,8 +372,10 @@
         });
       }
       const pi = conn.page_info || {};
-      if (pi.has_next_page && pi.end_cursor) { after = pi.end_cursor; }
-      else { partial = !!pi.has_next_page; break; }
+      if (pi.has_next_page && pi.end_cursor) {
+        after = pi.end_cursor;
+        await new Promise((r) => setTimeout(r, 120)); // gentle throttle between pages
+      } else { partial = !!pi.has_next_page; break; }
     }
     if (pages >= MAX_PAGES || engagers.length >= MAX_TOTAL) partial = true;
     return { engagers, partial };

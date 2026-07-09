@@ -303,7 +303,7 @@
     "message": "partial list"
   },
   "likers_partial_hint": {
-    "message": "Threads only lists accounts that have onboarded to Threads, so the named accounts can be fewer than the count."
+    "message": "Fetched newest-first. Very large lists stop at a safety cap, and the count keeps changing as new likes/reposts arrive, so the fetched number can differ from the total."
   },
   "likers_copy": {
     "message": "Copy handles"

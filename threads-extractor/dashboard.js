@@ -887,9 +887,9 @@
     return out.join('\n').trim() + '\n';
   }
 
-  // ---- transient toast (bottom-center) ----
+  // ---- transient toast (bottom-center); sticky stays until replaced ----
   let toastTimer = null;
-  function toast(message, isError) {
+  function toast(message, isError, sticky) {
     let el = $('toast');
     if (!el) {
       el = document.createElement('div');
@@ -900,7 +900,7 @@
     el.classList.toggle('err', !!isError);
     el.classList.add('show');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.classList.remove('show'), isError ? 4200 : 2600);
+    if (!sticky) toastTimer = setTimeout(() => el.classList.remove('show'), isError ? 4200 : 2600);
   }
 
   // ---- fetch who liked / reposted a post, on demand, and attach to the record ----
@@ -926,7 +926,7 @@
     const gid = kind + '|' + p._source + '|' + p._key;
     if (grabbingEngagers.has(gid)) return;
     grabbingEngagers.add(gid);
-    toast(t(K.grabbing));
+    toast(t(K.grabbing), false, true); // sticky: large lists take a while to page through
     let r = null;
     try {
       r = await chrome.runtime.sendMessage({
