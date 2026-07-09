@@ -1025,6 +1025,42 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
 
+      case 'GET_LIKERS': { // dashboard: fetch who liked (or reposted) one post, on demand
+        const tab = await findThreadsTab();
+        if (!tab) {
+          sendResponse({ ok: false, error: 'No threads.com tab found — open threads.com first.' });
+          break;
+        }
+        let r;
+        try {
+          r = await chrome.tabs.sendMessage(tab.id, {
+            type: 'FETCH_ENGAGERS', postId: msg.postId, tabType: msg.tabType || 'like',
+          });
+        } catch (e) {
+          sendResponse({ ok: false, error: 'Could not reach the Threads tab — reload it and try again.' });
+          break;
+        }
+        if (!r || !r.ok) {
+          sendResponse({ ok: false, error: (r && r.error) || 'Could not fetch likers.' });
+          break;
+        }
+        // attach to the stored post so it persists and flows into exports
+        const buckets = {
+          saved: store.posts, liked: store.likedPosts,
+          feed: store.feedPosts, profile: store.profilePosts,
+        };
+        const bucket = buckets[msg.source];
+        const rec = bucket && bucket[msg.key];
+        if (rec) {
+          rec.likers = r.engagers || [];
+          rec.likersAt = new Date().toISOString();
+          rec.likersPartial = !!r.partial;
+          await persist();
+        }
+        sendResponse({ ok: true, likers: r.engagers || [], partial: !!r.partial, count: (r.engagers || []).length });
+        break;
+      }
+
       case 'DELETE_POSTS': { // dashboard: delete an explicit set of posts by storage key
         const buckets = {
           saved: store.posts,

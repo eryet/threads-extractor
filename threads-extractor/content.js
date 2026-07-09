@@ -138,10 +138,19 @@
     banner = null;
   }
 
+  // ---- engager fetch bridge (dashboard -> SW -> here -> inject.js -> back) ----
+  let engSeq = 0;
+  const pendingEngagers = new Map(); // reqId -> settle(result)
+
   // ---- relay batches + discovered feed/column lists from the MAIN-world script ----
   window.addEventListener('message', (ev) => {
     const d = ev.data;
     if (ev.source !== window || orphaned || !d || d.__tse !== true) return;
+    if (d.type === 'TSE_ENGAGERS') {
+      const settle = pendingEngagers.get(d.reqId);
+      if (settle) { pendingEngagers.delete(d.reqId); settle(d); }
+      return;
+    }
     if (d.type === 'TSE_FEEDS') {
       send({ type: 'FEEDS', feeds: d.feeds || [] });
       return;
@@ -455,6 +464,20 @@
       if (addedCols.length) removeAddedColumns(); // best-effort board restore
       sendState('stopped', msg.reason || 'stopped');
       sendResponse({ ok: true });
+    } else if (msg.type === 'FETCH_ENGAGERS') {
+      // dashboard asked (via SW) for who liked/reposted a post — hand it to
+      // inject.js (MAIN world), which replays the authenticated graphql query
+      const reqId = 'eng_' + (++engSeq);
+      const engTimer = setTimeout(() => {
+        const settle = pendingEngagers.get(reqId);
+        if (settle) { pendingEngagers.delete(reqId); settle({ ok: false, error: 'Timed out — keep the Threads tab loaded and try again.' }); }
+      }, 30000);
+      pendingEngagers.set(reqId, (res) => {
+        clearTimeout(engTimer);
+        sendResponse({ ok: !!res.ok, engagers: res.engagers || [], partial: !!res.partial, error: res.error || null });
+      });
+      window.postMessage({ __tse: true, type: 'TSE_GET_ENGAGERS', reqId, postId: msg.postId, tabType: msg.tabType || 'like' }, window.location.origin);
+      return true; // async sendResponse
     } else if (msg.type === 'GET_USERNAME') {
       sendResponse({ username: ownUsername() });
     } else if (msg.type === 'PING') {

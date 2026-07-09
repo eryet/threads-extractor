@@ -251,6 +251,33 @@
   "menu_delete_post": {
     "message": "Delete post…"
   },
+  "menu_who_liked": {
+    "message": "Who liked this"
+  },
+  "menu_refresh_likers": {
+    "message": "Refresh who liked this"
+  },
+  "likers_grabbing": {
+    "message": "Fetching who liked this…"
+  },
+  "likers_done": {
+    "message": "Got {n} liker(s)"
+  },
+  "likers_none": {
+    "message": "No likers are listed for this post"
+  },
+  "likers_failed": {
+    "message": "Couldn't fetch likers"
+  },
+  "likers_summary": {
+    "message": "❤ Liked by {n}"
+  },
+  "likers_partial": {
+    "message": "partial list"
+  },
+  "likers_copy": {
+    "message": "Copy handles"
+  },
   "btn_reset_filters": {
     "message": "Clear all filters"
   },

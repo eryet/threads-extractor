@@ -563,7 +563,53 @@
     if (p.text) c.appendChild(textBlock(p.text));
     if (p.media && p.media.length) c.appendChild(mediaGrid(p.media, p.url));
     if (foot.childNodes.length) c.appendChild(foot);
+    if (p.likers && p.likers.length) c.appendChild(likersBlock(p));
     return c;
+  }
+
+  // collapsible "liked by N" panel; each liker links to their Threads profile
+  function likersBlock(p) {
+    const box = document.createElement('details');
+    box.className = 'likers';
+    const sum = document.createElement('summary');
+    const label = document.createElement('span');
+    label.textContent = t('likers_summary', { n: p.likers.length }) +
+      (p.likersPartial ? ' · ' + t('likers_partial') : '');
+    sum.appendChild(label);
+    const copy = document.createElement('button');
+    copy.className = 'likerCopy';
+    copy.textContent = t('likers_copy');
+    copy.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try { await navigator.clipboard.writeText(p.likers.map((u) => u.handle).join('\n')); } catch (_) {}
+      copy.textContent = t('menu_copied_text');
+      setTimeout(() => { copy.textContent = t('likers_copy'); }, 900);
+    });
+    sum.appendChild(copy);
+    box.appendChild(sum);
+    const list = document.createElement('div');
+    list.className = 'likerList';
+    for (const u of p.likers) {
+      const a = document.createElement('a');
+      a.className = 'liker';
+      a.href = 'https://www.threads.com/' + u.handle;
+      a.target = '_blank';
+      a.rel = 'noreferrer';
+      const h = document.createElement('b');
+      h.textContent = u.handle;
+      a.appendChild(h);
+      if (u.name && u.name !== u.handle) {
+        const nm = document.createElement('span');
+        nm.textContent = u.name;
+        a.appendChild(nm);
+      }
+      list.appendChild(a);
+    }
+    box.appendChild(list);
+    // expanding/collapsing changes card height — keep the virtual layout honest
+    box.addEventListener('toggle', () => scheduleMeasure(true));
+    return box;
   }
 
   // ---- virtualized rendering ----
@@ -830,6 +876,42 @@
     return out.join('\n').trim() + '\n';
   }
 
+  // ---- transient toast (bottom-center) ----
+  let toastTimer = null;
+  function toast(message, isError) {
+    let el = $('toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = message;
+    el.classList.toggle('err', !!isError);
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), isError ? 4200 : 2600);
+  }
+
+  // ---- fetch who liked a post, on demand, and attach to the record ----
+  const grabbingLikers = new Set(); // post keys currently in flight
+  async function grabLikers(p) {
+    const gid = p._source + '|' + p._key;
+    if (grabbingLikers.has(gid)) return;
+    grabbingLikers.add(gid);
+    toast(t('likers_grabbing'));
+    let r = null;
+    try {
+      r = await chrome.runtime.sendMessage({
+        type: 'GET_LIKERS', postId: p.id, source: p._source, key: p._key, tabType: 'like',
+      });
+    } catch (_) { /* r stays null */ }
+    grabbingLikers.delete(gid);
+    if (!r || !r.ok) { toast((r && r.error) || t('likers_failed'), true); return; }
+    toast(r.count ? t('likers_done', { n: r.count }) : t('likers_none'));
+    await loadPosts();
+    update(true);
+  }
+
   let menuEl = null;
   function closeCardMenu() {
     if (menuEl) menuEl.remove();
@@ -902,6 +984,10 @@
       copiedFx(copyMd);
     });
     menuEl.appendChild(copyMd);
+
+    const likers = menuBtn('❤', p.likers ? t('menu_refresh_likers') : t('menu_who_liked'));
+    likers.addEventListener('click', () => { closeCardMenu(); grabLikers(p); });
+    menuEl.appendChild(likers);
 
     const del = menuBtn('🗑', t('menu_delete_post'));
     del.className = 'menuDanger';

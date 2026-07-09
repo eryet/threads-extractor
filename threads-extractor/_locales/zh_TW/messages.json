@@ -251,6 +251,33 @@
   "menu_delete_post": {
     "message": "刪除貼文…"
   },
+  "menu_who_liked": {
+    "message": "誰按了讚"
+  },
+  "menu_refresh_likers": {
+    "message": "重新抓取按讚的人"
+  },
+  "likers_grabbing": {
+    "message": "正在抓取按讚的人…"
+  },
+  "likers_done": {
+    "message": "取得 {n} 位按讚的人"
+  },
+  "likers_none": {
+    "message": "這則貼文沒有列出按讚的人"
+  },
+  "likers_failed": {
+    "message": "無法取得按讚的人"
+  },
+  "likers_summary": {
+    "message": "❤ {n} 人按讚"
+  },
+  "likers_partial": {
+    "message": "部分名單"
+  },
+  "likers_copy": {
+    "message": "複製帳號"
+  },
   "btn_reset_filters": {
     "message": "清除所有篩選"
   },

@@ -41,6 +41,30 @@
   const CONN_KINDS = { saved_media: 'saved', liked_media: 'liked', feedData: 'feed', results: 'feed', mediaData: 'profile' };
   const MARKERS = Object.keys(CONN_KINDS);
 
+  // ---- Post engagers: who liked / reposted a post (verified live 2026-07-09) ----
+  // The post's "View activity" panel loads them via BarcelonaFeedbackHubTabQuery,
+  // connection data.feedback_hub_tab_items:
+  //   variables: { post_id: <numeric pk>, tab_type: 'like'|'repost', sort_type: 'default', + relay providers }
+  //   node: { actor: {username, pk}, extra: {icon_name, context}, timestamp }, page_info
+  // The like COUNT can exceed the listed likers (Threads seems to list only
+  // accounts that onboarded to Threads), so results are a partial subset.
+  // doc_id rotates across Meta deploys; we self-heal by caching the live doc_id
+  // whenever the user opens any post's activity panel, and fall back to this
+  // constant otherwise (re-derive via DevTools if it ever 400s).
+  const ENGAGERS_FRIENDLY = 'BarcelonaFeedbackHubTabQuery';
+  const ENGAGERS_DOC_ID = '36463653833282720';
+  const ENGAGERS_PROVIDERS = {
+    BarcelonaShouldShowFediverseM075Featuresrelayprovider: true,
+    BarcelonaIsLoggedInrelayprovider: true,
+    BarcelonaHasEventBadgerelayprovider: false,
+    BarcelonaHasWebFaviconsrelayprovider: false,
+    BarcelonaIsCrawlerrelayprovider: false,
+    BarcelonaHasCommunityTopContributorsrelayprovider: true,
+  };
+  let gqlTemplate = null;        // {url, headers, body} of a recent authenticated graphql POST
+  let liveEngagersDocId = null;  // doc_id captured from a real FeedbackHub request, if seen
+  const harvestedProviders = {}; // __relay_internal__pv__* -> value observed live
+
   // Replay buffer: everything emitted since page load. content.js asks for a
   // replay (TSE_RESCAN) when a grab starts, so batches that arrived BEFORE the
   // user hit "Grab" (embedded first batch, manual pre-scrolling) are not lost.
@@ -238,6 +262,115 @@
     }
   }
 
+  // ---- Engager fetch (who liked / reposted a post) ----
+  // Learn an authenticated graphql request as a template from live traffic, so
+  // we can re-issue it for the FeedbackHub query without hard-coding the
+  // rotating CSRF/session tokens (they're reused verbatim from the template).
+  function headersToObject(h) {
+    const o = {};
+    if (!h) return o;
+    if (Array.isArray(h)) { for (const pair of h) if (pair) o[pair[0]] = pair[1]; return o; }
+    if (typeof h.forEach === 'function') { h.forEach((v, k) => { o[k] = v; }); return o; }
+    return Object.assign({}, h);
+  }
+
+  // threads.com issues graphql over XHR (not fetch), so the template — and its
+  // request headers (x-fb-lsd, x-csrftoken, x-asbd-id, …) — must be captured
+  // from either transport. headers is a plain {name: value} object.
+  function noteGraphqlBody(url, headers, body) {
+    try {
+      if (body instanceof URLSearchParams) body = body.toString();
+      if (typeof body !== 'string' || body.indexOf('fb_dtsg=') === -1) return;
+      gqlTemplate = { url, headers: headers || {}, body };
+      const params = new URLSearchParams(body);
+      if (params.get('fb_api_req_friendly_name') === ENGAGERS_FRIENDLY) {
+        const did = params.get('doc_id');
+        if (did) liveEngagersDocId = did;
+      }
+      const vraw = params.get('variables');
+      if (vraw) {
+        const v = JSON.parse(vraw);
+        for (const k of Object.keys(v)) {
+          if (k.indexOf('__relay_internal__pv__') === 0) harvestedProviders[k] = v[k];
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Issue BarcelonaFeedbackHubTabQuery for one post and page through the actors.
+  async function fetchEngagers(postId, tabType) {
+    if (!gqlTemplate) throw new Error('Threads request context not ready — reload the Threads tab and try again.');
+    const pid = String(postId || '').trim();
+    if (!/^\d+$/.test(pid)) throw new Error('This post has no numeric id to look up.');
+    const tab = tabType === 'repost' ? 'repost' : 'like';
+    const providers = {};
+    for (const k of Object.keys(ENGAGERS_PROVIDERS)) {
+      const full = '__relay_internal__pv__' + k;
+      providers[full] = (full in harvestedProviders) ? harvestedProviders[full] : ENGAGERS_PROVIDERS[k];
+    }
+    const seen = new Set();
+    const engagers = [];
+    let after = null, pages = 0, partial = false;
+    const MAX_PAGES = 20, MAX_TOTAL = 2000;
+    while (pages < MAX_PAGES && engagers.length < MAX_TOTAL) {
+      pages++;
+      const vars = Object.assign({ post_id: pid, sort_type: 'default', tab_type: tab }, providers);
+      if (after) vars.after = after; // only on page 2+, so page 1 uses the known-good variable set
+      const params = new URLSearchParams(gqlTemplate.body);
+      params.set('fb_api_req_friendly_name', ENGAGERS_FRIENDLY);
+      params.set('doc_id', liveEngagersDocId || ENGAGERS_DOC_ID);
+      params.set('variables', JSON.stringify(vars));
+      const headers = Object.assign({}, gqlTemplate.headers);
+      // the template may be borrowed from any query — make the routing headers
+      // consistent with the FeedbackHub query we're actually sending
+      for (const hk of Object.keys(headers)) {
+        const low = hk.toLowerCase();
+        if (low === 'x-fb-friendly-name') headers[hk] = ENGAGERS_FRIENDLY;
+        else if (low === 'x-root-field-name') headers[hk] = 'feedback_hub_tab_items';
+      }
+      if (!Object.keys(headers).some((k) => k.toLowerCase() === 'content-type')) {
+        headers['content-type'] = 'application/x-www-form-urlencoded';
+      }
+      let json;
+      try {
+        const resp = await origFetch.call(window, gqlTemplate.url, {
+          method: 'POST', headers, body: params.toString(), credentials: 'include',
+        });
+        const text = await resp.text();
+        json = JSON.parse(text.split('\n')[0]); // responses can stream; the first doc holds the connection
+      } catch (e) {
+        if (after) break; // a later page failed — keep what we already have
+        throw new Error('Threads rejected the request (its data format may have changed).');
+      }
+      const conn = json && json.data && json.data.feedback_hub_tab_items;
+      if (!conn || !Array.isArray(conn.edges)) {
+        if (after) break;
+        throw new Error('Unexpected response — Threads may have changed its data format.');
+      }
+      for (const e of conn.edges) {
+        const n = e && e.node; const a = (n && n.actor) || {};
+        if (!a.username || seen.has(a.username)) continue;
+        seen.add(a.username);
+        let at = null;
+        if (n.timestamp) {
+          const ms = n.timestamp > 1e12 ? n.timestamp : n.timestamp * 1000;
+          at = new Date(ms).toISOString();
+        }
+        engagers.push({
+          handle: '@' + a.username,
+          name: (n.extra && n.extra.context) || a.full_name || null,
+          pk: String(a.pk || a.id || ''),
+          at,
+        });
+      }
+      const pi = conn.page_info || {};
+      if (pi.has_next_page && pi.end_cursor) { after = pi.end_cursor; }
+      else { partial = !!pi.has_next_page; break; }
+    }
+    if (pages >= MAX_PAGES || engagers.length >= MAX_TOTAL) partial = true;
+    return { engagers, partial };
+  }
+
   // ---- 1. fetch interception ----
   const origFetch = window.fetch;
   window.fetch = function (...args) {
@@ -245,6 +378,7 @@
     try {
       const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
       if (url.includes('/graphql')) {
+        noteGraphqlBody(url, headersToObject(args[1] && args[1].headers), args[1] && args[1].body);
         const feedUrl = feedUrlFromBody(args[1] && args[1].body);
         p.then((resp) => {
           try {
@@ -259,12 +393,19 @@
   // ---- 2. XHR interception ----
   const origOpen = XMLHttpRequest.prototype.open;
   const origSend = XMLHttpRequest.prototype.send;
+  const origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
   XMLHttpRequest.prototype.open = function (method, url, ...rest) {
     this.__tseUrl = String(url || '');
+    this.__tseHeaders = {};
     return origOpen.call(this, method, url, ...rest);
+  };
+  XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
+    try { if (this.__tseHeaders) this.__tseHeaders[name] = value; } catch (_) {}
+    return origSetHeader.call(this, name, value);
   };
   XMLHttpRequest.prototype.send = function (body) {
     if (this.__tseUrl && this.__tseUrl.includes('/graphql')) {
+      noteGraphqlBody(this.__tseUrl, this.__tseHeaders || {}, body);
       const feedUrl = feedUrlFromBody(body);
       this.addEventListener('load', () => {
         try {
@@ -313,10 +454,18 @@
     scanAllEmbedded();
   }
 
-  // ---- 4. Replay on demand (content.js sends this when a grab starts) ----
+  // ---- 4. Message handling from content.js (replay + engager fetch) ----
   window.addEventListener('message', (ev) => {
     const d = ev.data;
-    if (ev.source !== window || !d || d.__tse !== true || d.type !== 'TSE_RESCAN') return;
+    if (ev.source !== window || !d || d.__tse !== true) return;
+    if (d.type === 'TSE_GET_ENGAGERS') {
+      fetchEngagers(d.postId, d.tabType).then(
+        (r) => window.postMessage({ __tse: true, type: 'TSE_ENGAGERS', reqId: d.reqId, ok: true, engagers: r.engagers, partial: r.partial }, window.location.origin),
+        (e) => window.postMessage({ __tse: true, type: 'TSE_ENGAGERS', reqId: d.reqId, ok: false, error: String((e && e.message) || e) }, window.location.origin)
+      );
+      return;
+    }
+    if (d.type !== 'TSE_RESCAN') return;
     const snapshot = replay.slice(); // scanAllEmbedded() below emits live; avoid double-posting
     scanAllEmbedded();
     for (const m of snapshot) window.postMessage(m, window.location.origin);
