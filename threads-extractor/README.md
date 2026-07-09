@@ -201,8 +201,9 @@ extra permission. MAIN-world injection is declared statically in the manifest
 
 ## Caveats
 
-- Personal use on your own data; keep it unpublished. Meta's internal GraphQL
-  shape **will drift** eventually — see the re-discovery note above.
+- Personal use on your own data, at a personal, low-volume scale. Meta's
+  internal GraphQL shape **will drift** eventually — see the re-discovery
+  note above.
 - Keep the tab **visible** during a grab: Threads throttles hidden tabs and
   feed pagination stops (verified live — this is a Threads behavior, not an
   extension bug).

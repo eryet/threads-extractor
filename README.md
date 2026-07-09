@@ -5,6 +5,8 @@ data — saved posts, feeds, and profiles — and gives you a local dashboard to
 browse, filter, and export all of it. Everything runs inside your browser:
 no backend, no accounts, no analytics, and nothing ever leaves your machine.
 
+![Dashboard](images/screenshot/dashboard.png)
+
 > Personal-use tool. It reads data your logged-in session can already see,
 > through deliberately throttled scrolling of Threads' own pages. Meta's
 > internal GraphQL shapes drift over time, so expect occasional breakage —
@@ -54,11 +56,17 @@ no backend, no accounts, no analytics, and nothing ever leaves your machine.
 
 ## Install
 
+**From the Chrome Web Store** (pending review):
+[Threads Extractor](https://chromewebstore.google.com/detail/ljibcmgickjolhnjcmihoocelmlfofkl)
+
+**Or unpacked, from source:**
+
 1. Clone this repo
 2. Open `chrome://extensions`, enable **Developer mode**
 3. **Load unpacked** → select the [`threads-extractor/`](threads-extractor/) folder
-4. Open threads.com, click the extension icon, and grab something — then hit
-   **Dashboard ↗** in the popup header
+
+Then open threads.com, click the extension icon, and grab something — hit
+**Dashboard ↗** in the popup header to browse it.
 
 Chrome 111+ required. Keep the Threads tab **visible** during grabs — Threads
 pauses feed loading in hidden tabs (a small dedicated window in a screen
@@ -69,12 +77,14 @@ corner works fine).
 | Path | What |
 | --- | --- |
 | [`threads-extractor/`](threads-extractor/) | the extension — full docs, architecture, and GraphQL discovery notes in its [README](threads-extractor/README.md) |
+| [`PRIVACY.md`](PRIVACY.md) | privacy policy (also linked from the Web Store listing) |
+| `images/screenshot/` | screenshots and Web Store listing assets |
 | `threads-saved-extractor-brief.md` | the original project brief |
 
 ## Privacy & caveats
 
 - All data stays in `chrome.storage.local`; the only outputs are the export
-  files you download.
+  files you download. Full policy: [PRIVACY.md](PRIVACY.md).
 - Media are stored as URLs only — Meta's signed CDN links expire after a few
   days, so download anything you want to keep soon after export.
 - Chrome ties an unpacked extension's storage to its folder path: renaming or
