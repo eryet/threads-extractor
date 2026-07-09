@@ -257,6 +257,12 @@
   "menu_refresh_likers": {
     "message": "重新抓取按讚的人"
   },
+  "menu_who_reposted": {
+    "message": "誰轉發了"
+  },
+  "menu_refresh_reposters": {
+    "message": "重新抓取轉發的人"
+  },
   "likers_grabbing": {
     "message": "正在抓取按讚的人…"
   },
@@ -269,17 +275,35 @@
   "likers_failed": {
     "message": "無法取得按讚的人"
   },
+  "reposters_grabbing": {
+    "message": "正在抓取轉發的人…"
+  },
+  "reposters_done": {
+    "message": "取得 {n} 位轉發的人"
+  },
+  "reposters_none": {
+    "message": "這則貼文沒有列出轉發的人"
+  },
+  "reposters_failed": {
+    "message": "無法取得轉發的人"
+  },
   "likers_summary": {
     "message": "❤ {n} 人按讚"
   },
   "likers_summary_of": {
     "message": "❤ {total} 個讚中的 {n} 人"
   },
+  "reposters_summary": {
+    "message": "🔁 {n} 人轉發"
+  },
+  "reposters_summary_of": {
+    "message": "🔁 {total} 次轉發中的 {n} 人"
+  },
   "likers_partial": {
     "message": "部分名單"
   },
   "likers_partial_hint": {
-    "message": "Threads 只會列出已加入 Threads 的帳號，因此列出的按讚者可能少於讚數。"
+    "message": "Threads 只會列出已加入 Threads 的帳號，因此列出的帳號可能少於總數。"
   },
   "likers_copy": {
     "message": "複製帳號"

@@ -66,9 +66,10 @@
       takenAt: raw.taken_at ? new Date(raw.taken_at * 1000).toISOString() : null,
       savedAt: null, // Threads does not expose the saved timestamp
       capturedAt,
-      // `likers` (+ likersAt / likersPartial) may be attached later, on demand,
-      // by the dashboard's "who liked this" action (see sw.js GET_LIKERS) —
-      // each entry is { handle, name, pk, at }. Absent until fetched.
+      // `likers` / `reposters` (+ <field>At / <field>Partial) may be attached
+      // later, on demand, by the dashboard's "who liked / reposted this" action
+      // (see sw.js GET_LIKERS) — each entry is { handle, name, pk, at }. Absent
+      // until fetched.
     };
   }
 
