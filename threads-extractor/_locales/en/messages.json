@@ -272,8 +272,14 @@
   "likers_summary": {
     "message": "❤ Liked by {n}"
   },
+  "likers_summary_of": {
+    "message": "❤ Liked by {n} of {total}"
+  },
   "likers_partial": {
     "message": "partial list"
+  },
+  "likers_partial_hint": {
+    "message": "Threads only lists accounts that have onboarded to Threads, so the named likers can be fewer than the like count."
   },
   "likers_copy": {
     "message": "Copy handles"

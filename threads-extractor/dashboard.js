@@ -573,8 +573,15 @@
     box.className = 'likers';
     const sum = document.createElement('summary');
     const label = document.createElement('span');
-    label.textContent = t('likers_summary', { n: p.likers.length }) +
-      (p.likersPartial ? ' · ' + t('likers_partial') : '');
+    // Threads lists only accounts onboarded to Threads, so the named likers are
+    // often fewer than the like count — show "N of M" and flag it as partial
+    const total = (p.likeCount != null && p.likeCount > p.likers.length) ? p.likeCount : null;
+    const incomplete = !!total || p.likersPartial;
+    label.textContent = (total
+      ? t('likers_summary_of', { n: p.likers.length, total })
+      : t('likers_summary', { n: p.likers.length }))
+      + (incomplete ? ' · ' + t('likers_partial') : '');
+    if (incomplete) sum.title = t('likers_partial_hint');
     sum.appendChild(label);
     const copy = document.createElement('button');
     copy.className = 'likerCopy';

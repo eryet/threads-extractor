@@ -272,8 +272,14 @@
   "likers_summary": {
     "message": "❤ {n} 人按讚"
   },
+  "likers_summary_of": {
+    "message": "❤ {total} 個讚中的 {n} 人"
+  },
   "likers_partial": {
     "message": "部分名單"
+  },
+  "likers_partial_hint": {
+    "message": "Threads 只會列出已加入 Threads 的帳號，因此列出的按讚者可能少於讚數。"
   },
   "likers_copy": {
     "message": "複製帳號"
