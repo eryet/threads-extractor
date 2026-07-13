@@ -34,12 +34,13 @@
     feed: { labelKey: 'nav_feeds', order: 2 },
     profile: { labelKey: 'nav_profiles', order: 3 },
     search: { labelKey: 'nav_search', order: 4 },
+    accounts: { labelKey: 'nav_accounts', order: 5 }, // search "Profiles" serp results
   };
 
   // ---- data ----
 
   async function loadPosts() {
-    const got = await chrome.storage.local.get(['tse_posts', 'tse_liked_posts', 'tse_feed_posts', 'tse_profile_posts', 'tse_search_posts']);
+    const got = await chrome.storage.local.get(['tse_posts', 'tse_liked_posts', 'tse_feed_posts', 'tse_profile_posts', 'tse_search_posts', 'tse_search_profiles']);
     // _key = the post's storage key, so "delete shown" can address it exactly
     const tag = (obj, src) =>
       Object.entries(obj || {}).map(([k, p]) => Object.assign({}, p, { _source: src, _key: k }));
@@ -47,7 +48,10 @@
       .concat(tag(got.tse_liked_posts, 'liked'))
       .concat(tag(got.tse_feed_posts, 'feed'))
       .concat(tag(got.tse_profile_posts, 'profile'))
-      .concat(tag(got.tse_search_posts, 'search'));
+      .concat(tag(got.tse_search_posts, 'search'))
+      // account records from the search "Profiles" serp — not posts, rendered
+      // by accountCard() and exported via TSEExport.profilesTo*
+      .concat(tag(got.tse_search_profiles, 'accounts'));
 
     // drop filter selections whose data is gone (deleted / cleared), so the
     // view doesn't strand the user on an empty result
@@ -167,6 +171,8 @@
           p.searchQuery || '',
           p.profileHandle || '',
           (p.replyTo && p.replyTo.text) || '',
+          // account records (search Profiles serp)
+          p.handle || '', p.name || '', p.bio || '',
         ].join('\n').toLowerCase();
         if (!hay.includes(q)) return false;
       }
@@ -224,7 +230,7 @@
     // source nav
     const nav = $('sourceNav');
     nav.textContent = '';
-    const counts = { saved: 0, liked: 0, feed: 0, profile: 0, search: 0 };
+    const counts = { saved: 0, liked: 0, feed: 0, profile: 0, search: 0, accounts: 0 };
     for (const p of all) counts[p._source]++;
     const rows = [['all', t('nav_all'), all.length]]
       .concat(Object.keys(SRC).map((k) => [k, t(SRC[k].labelKey), counts[k]]));
@@ -254,9 +260,10 @@
       $('feedFacetClear').onclick = (e) => { e.preventDefault(); state.feeds.clear(); update(); };
     }
 
-    // search-query facet
-    const searchPosts = all.filter((p) => p._source === 'search');
-    const showQueries = searchPosts.length && (state.source === 'all' || state.source === 'search');
+    // search-query facet (posts and account results share it)
+    const searchPosts = all.filter((p) => p._source === 'search' || p._source === 'accounts');
+    const showQueries = searchPosts.length &&
+      (state.source === 'all' || state.source === 'search' || state.source === 'accounts');
     $('searchFacet').hidden = !showQueries;
     if (showQueries) {
       const box = $('searchChips');
@@ -466,7 +473,7 @@
     const b = document.createElement('span');
     b.className = 'badge ' + p._source;
     b.textContent = p._source === 'feed' ? (p.feed || 'feed')
-      : p._source === 'search' ? '⌕ ' + (p.searchQuery || t('nav_search'))
+      : p._source === 'search' || p._source === 'accounts' ? '⌕ ' + (p.searchQuery || t('nav_search'))
         : p._source === 'profile' ? t(p.section === 'replies' ? 'badge_reply' : 'badge_thread')
           : p._source === 'liked' ? t('badge_liked')
             : t('badge_saved');
@@ -600,6 +607,90 @@
     return c;
   }
 
+  // account record from the search "Profiles" serp — avatar, handle, bio,
+  // follower count; the whole thing is a shortcut to the profile
+  function accountCard(p) {
+    const c = document.createElement('article');
+    c.className = 'card accCard';
+    c.__cvSkipped = true;
+    c.addEventListener('contentvisibilityautostatechange', (e) => {
+      c.__cvSkipped = e.skipped;
+      if (!e.skipped) scheduleMeasure();
+    });
+
+    const hd = document.createElement('div');
+    hd.className = 'hd';
+    const av = document.createElement('span');
+    av.className = 'avatar';
+    const initial = (p.handle || '@?').replace(/^@/, '').charAt(0).toUpperCase() || '?';
+    if (p.avatar) {
+      const img = document.createElement('img');
+      img.src = p.avatar; // signed CDN URL — expired ones fall back to the initial
+      img.alt = '';
+      img.loading = 'lazy';
+      img.addEventListener('error', () => { img.remove(); av.textContent = initial; });
+      av.appendChild(img);
+    } else {
+      av.textContent = initial;
+    }
+    hd.appendChild(av);
+    const who = document.createElement('span');
+    who.className = 'who';
+    const handle = document.createElement('a');
+    handle.className = 'handle';
+    handle.textContent = p.handle || '@unknown';
+    handle.href = p.url || '#';
+    handle.target = '_blank';
+    handle.rel = 'noreferrer';
+    who.appendChild(handle);
+    if (p.name) {
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = p.name;
+      who.appendChild(name);
+    }
+    hd.appendChild(who);
+    c.appendChild(hd);
+
+    const sub = document.createElement('div');
+    sub.className = 'sub';
+    sub.appendChild(badgeFor(p));
+    if (p.searchOrder != null) {
+      const w = document.createElement('span');
+      w.className = 'when';
+      w.textContent = '#' + p.searchOrder;
+      sub.appendChild(w);
+    }
+    c.appendChild(sub);
+
+    if (p.bio) c.appendChild(textBlock(p.bio));
+
+    const foot = document.createElement('div');
+    foot.className = 'foot';
+    if (p.followers != null) {
+      const s = document.createElement('span');
+      s.className = 'stat';
+      s.textContent = '👥 ' + fmtN(p.followers);
+      foot.appendChild(s);
+    }
+    if (p.verified || p.private) {
+      const f = document.createElement('span');
+      f.className = 'stat';
+      f.textContent = [p.verified ? '✓' : null, p.private ? '🔒' : null].filter(Boolean).join(' ');
+      foot.appendChild(f);
+    }
+    if (p.url) {
+      const a = document.createElement('a');
+      a.href = p.url;
+      a.target = '_blank';
+      a.rel = 'noreferrer';
+      a.textContent = t('open_profile');
+      foot.appendChild(a);
+    }
+    c.appendChild(foot);
+    return c;
+  }
+
   // collapsible "liked/reposted by N" panel; each account links to its profile
   function engagersBlock(p, kind) {
     const K = ENGAGER[kind];
@@ -678,7 +769,7 @@
   const cardCache = new Map(); // post key -> card element, LRU order
 
   const keyOf = (p) =>
-    p._source + '|' + (p.feed || p.profileHandle || p.searchQuery || '') + '|' + (p.section || '') + '|' + p.id;
+    p._source + '|' + (p.feed || p.profileHandle || p.searchQuery || '') + '|' + (p.section || '') + '|' + (p.id || p.pk);
 
   const rowH = (r) => rowHeights[r] || EST;
   const rowCount = () => Math.ceil(view.length / cols);
@@ -693,7 +784,7 @@
     const k = keyOf(p);
     let el = cardCache.get(k);
     if (el) cardCache.delete(k); // re-insert below = LRU bump
-    else el = card(p);
+    else el = p._source === 'accounts' ? accountCard(p) : card(p);
     cardCache.set(k, el);
     el.dataset.idx = i;
     return el;
@@ -1171,7 +1262,7 @@
   $('delShown').addEventListener('click', async () => {
     if (!view.length) return;
     if (!(await confirmDialog(t('confirm_delete', { n: view.length.toLocaleString() })))) return;
-    const keys = { saved: [], liked: [], feed: [], profile: [], search: [] };
+    const keys = { saved: [], liked: [], feed: [], profile: [], search: [], accounts: [] };
     for (const p of view) keys[p._source].push(p._key);
     $('delShown').disabled = true;
     try {
@@ -1215,9 +1306,19 @@
         : state.source === 'liked' ? 'liked'
           : state.source === 'search' ? 'search' : undefined;
 
-  $('expJson').addEventListener('click', () => download(TSEExport.toJSON(view), 'application/json', 'json'));
-  $('expCsv').addEventListener('click', () => download(TSEExport.toCSV(view, exportKind()), 'text/csv', 'csv'));
-  $('expMd').addEventListener('click', () => download(TSEExport.toMarkdown(view, exportKind()), 'text/markdown', 'md'));
+  // account records only fit the post CSV/MD shapes when viewed alone — the
+  // Accounts source exports with the account layout, mixed views export the
+  // posts and leave accounts to JSON (which keeps every record verbatim)
+  const viewPosts = () => view.filter((p) => p._source !== 'accounts');
+  $('expJson').addEventListener('click', () => download(
+    state.source === 'accounts' ? TSEExport.profilesToJSON(view) : TSEExport.toJSON(view),
+    'application/json', 'json'));
+  $('expCsv').addEventListener('click', () => download(
+    state.source === 'accounts' ? TSEExport.profilesToCSV(view) : TSEExport.toCSV(viewPosts(), exportKind()),
+    'text/csv', 'csv'));
+  $('expMd').addEventListener('click', () => download(
+    state.source === 'accounts' ? TSEExport.profilesToMarkdown(view) : TSEExport.toMarkdown(viewPosts(), exportKind()),
+    'text/markdown', 'md'));
 
   // ---- import: restore posts from earlier JSON exports ----
 
@@ -1313,7 +1414,7 @@
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
     if (changes.tse_state || changes.tse_liked_state || changes.tse_feed_state || changes.tse_profile_state || changes.tse_search_state) loadLive();
-    if (changes.tse_posts || changes.tse_liked_posts || changes.tse_feed_posts || changes.tse_profile_posts || changes.tse_search_posts) {
+    if (changes.tse_posts || changes.tse_liked_posts || changes.tse_feed_posts || changes.tse_profile_posts || changes.tse_search_posts || changes.tse_search_profiles) {
       clearTimeout(reloadTimer);
       reloadTimer = setTimeout(async () => {
         await loadPosts();

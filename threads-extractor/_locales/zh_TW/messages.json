@@ -434,6 +434,12 @@
   "st_search_accounts": {
     "message": "{m} 個帳號"
   },
+  "nav_accounts": {
+    "message": "帳號"
+  },
+  "open_profile": {
+    "message": "開啟個人檔案"
+  },
   "btn_reset_filters": {
     "message": "清除所有篩選"
   },

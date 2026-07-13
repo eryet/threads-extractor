@@ -678,6 +678,7 @@ async function handleSearchUsersBatch(msg, sender) {
       pk,
       handle: '@' + u.username,
       name: u.full_name || null,
+      avatar: u.profile_pic_url || null, // signed CDN URL — expires in days
       bio: u.biography || null,
       followers: u.follower_count != null ? u.follower_count : null,
       verified: !!u.is_verified,
@@ -1356,6 +1357,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           feed: store.feedPosts,
           profile: store.profilePosts,
           search: store.searchPosts,
+          accounts: store.searchProfiles,
         };
         let removed = 0;
         for (const [src, keys] of Object.entries(msg.keys || {})) {

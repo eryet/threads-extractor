@@ -434,6 +434,12 @@
   "st_search_accounts": {
     "message": "{m} account(s)"
   },
+  "nav_accounts": {
+    "message": "Accounts"
+  },
+  "open_profile": {
+    "message": "open profile"
+  },
   "btn_reset_filters": {
     "message": "Clear all filters"
   },
