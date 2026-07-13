@@ -251,6 +251,117 @@
   "menu_delete_post": {
     "message": "Delete post…"
   },
+  "menu_who_liked": {
+    "message": "Who liked this"
+  },
+  "menu_refresh_likers": {
+    "message": "Refresh who liked this"
+  },
+  "menu_who_reposted": {
+    "message": "Who reposted this"
+  },
+  "menu_refresh_reposters": {
+    "message": "Refresh who reposted this"
+  },
+  "menu_who_quoted": {
+    "message": "Who quoted this"
+  },
+  "menu_refresh_quoters": {
+    "message": "Refresh who quoted this"
+  },
+  "likers_grabbing": {
+    "message": "Fetching who liked this…"
+  },
+  "likers_grabbing_n": {
+    "message": "Fetching who liked this… {n} / {max} max"
+  },
+  "likers_done": {
+    "message": "Got {n} liker(s)"
+  },
+  "likers_none": {
+    "message": "No likers are listed for this post"
+  },
+  "likers_failed": {
+    "message": "Couldn't fetch likers"
+  },
+  "reposters_grabbing": {
+    "message": "Fetching who reposted this…"
+  },
+  "reposters_grabbing_n": {
+    "message": "Fetching who reposted this… {n} / {max} max"
+  },
+  "reposters_done": {
+    "message": "Got {n} reposter(s)"
+  },
+  "reposters_none": {
+    "message": "No reposters are listed for this post"
+  },
+  "reposters_failed": {
+    "message": "Couldn't fetch reposters"
+  },
+  "quoters_grabbing": {
+    "message": "Fetching who quoted this…"
+  },
+  "quoters_grabbing_n": {
+    "message": "Fetching who quoted this… {n} / {max} max"
+  },
+  "quoters_done": {
+    "message": "Got {n} quote(s)"
+  },
+  "quoters_none": {
+    "message": "No quotes are listed for this post"
+  },
+  "quoters_failed": {
+    "message": "Couldn't fetch quotes"
+  },
+  "likers_summary": {
+    "message": "❤ Liked by {n}"
+  },
+  "likers_summary_of": {
+    "message": "❤ Liked by {n} of {total}"
+  },
+  "reposters_summary": {
+    "message": "🔁 Reposted by {n}"
+  },
+  "reposters_summary_of": {
+    "message": "🔁 Reposted by {n} of {total}"
+  },
+  "quoters_summary": {
+    "message": "❝ Quoted by {n}"
+  },
+  "quoters_summary_of": {
+    "message": "❝ Quoted by {n} of {total}"
+  },
+  "likers_partial": {
+    "message": "partial list"
+  },
+  "likers_partial_hint": {
+    "message": "Fetched newest-first. Very large lists stop at a safety cap, and the count keeps changing as new likes/reposts/quotes arrive, so the fetched number can differ from the total."
+  },
+  "likers_copy": {
+    "message": "Copy handles"
+  },
+  "err_no_tab": {
+    "message": "No threads.com tab found — open threads.com first."
+  },
+  "err_tab_unreachable": {
+    "message": "Could not reach the Threads tab — reload it, then run a grab (e.g. a feed) before retrying."
+  },
+  "err_timeout": {
+    "message": "Timed out — keep the Threads tab loaded and try again."
+  },
+  "err_no_template": {
+    "message": "Threads request context not ready — run any grab (e.g. re-grab a feed) from the popup first, then try again."
+  },
+  "err_no_post_id": {
+    "message": "This post has no numeric id to look up."
+  },
+  "err_rejected": {
+    "message": "Threads rejected the request (its data format may have changed)."
+  },
+  "err_bad_response": {
+    "message": "Unexpected response — Threads may have changed its data format."
+  },
   "btn_reset_filters": {
     "message": "Clear all filters"
   },

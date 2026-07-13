@@ -563,7 +563,65 @@
     if (p.text) c.appendChild(textBlock(p.text));
     if (p.media && p.media.length) c.appendChild(mediaGrid(p.media, p.url));
     if (foot.childNodes.length) c.appendChild(foot);
+    if (p.likers && p.likers.length) c.appendChild(engagersBlock(p, 'like'));
+    if (p.reposters && p.reposters.length) c.appendChild(engagersBlock(p, 'repost'));
+    if (p.quoters && p.quoters.length) c.appendChild(engagersBlock(p, 'quote'));
     return c;
+  }
+
+  // collapsible "liked/reposted by N" panel; each account links to its profile
+  function engagersBlock(p, kind) {
+    const K = ENGAGER[kind];
+    const users = p[K.field];
+    const box = document.createElement('details');
+    box.className = 'likers';
+    const sum = document.createElement('summary');
+    const label = document.createElement('span');
+    // Threads lists only accounts onboarded to Threads, so the named accounts
+    // are often fewer than the count — show "N of M" and flag it as partial
+    const count = p[K.countField];
+    const total = (count != null && count > users.length) ? count : null;
+    const incomplete = !!total || p[K.partialField];
+    label.textContent = (total
+      ? t(K.summaryOf, { n: users.length, total })
+      : t(K.summary, { n: users.length }))
+      + (incomplete ? ' · ' + t('likers_partial') : '');
+    if (incomplete) sum.title = t('likers_partial_hint');
+    sum.appendChild(label);
+    const copy = document.createElement('button');
+    copy.className = 'likerCopy';
+    copy.textContent = t('likers_copy');
+    copy.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      try { await navigator.clipboard.writeText(users.map((u) => u.handle).join('\n')); } catch (_) {}
+      copy.textContent = t('menu_copied_text');
+      setTimeout(() => { copy.textContent = t('likers_copy'); }, 900);
+    });
+    sum.appendChild(copy);
+    box.appendChild(sum);
+    const list = document.createElement('div');
+    list.className = 'likerList';
+    for (const u of users) {
+      const a = document.createElement('a');
+      a.className = 'liker';
+      a.href = 'https://www.threads.com/' + u.handle;
+      a.target = '_blank';
+      a.rel = 'noreferrer';
+      const h = document.createElement('b');
+      h.textContent = u.handle;
+      a.appendChild(h);
+      if (u.name && u.name !== u.handle) {
+        const nm = document.createElement('span');
+        nm.textContent = u.name;
+        a.appendChild(nm);
+      }
+      list.appendChild(a);
+    }
+    box.appendChild(list);
+    // expanding/collapsing changes card height — keep the virtual layout honest
+    box.addEventListener('toggle', () => scheduleMeasure(true));
+    return box;
   }
 
   // ---- virtualized rendering ----
@@ -830,6 +888,122 @@
     return out.join('\n').trim() + '\n';
   }
 
+  // ---- transient toast (bottom-center) ----
+  let toastTimer = null;
+  function toast(message, isError) {
+    let el = $('toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'toast';
+      document.body.appendChild(el);
+    }
+    el.textContent = message;
+    el.classList.toggle('err', !!isError);
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), isError ? 4200 : 2600);
+  }
+
+  // ---- fetch banner (top-center, spinner) — visible while a grab is in flight ----
+  function fetchBanner(message) {
+    let el = $('fetchBanner');
+    if (message == null) { if (el) el.classList.remove('show'); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'fetchBanner';
+      const spin = document.createElement('span');
+      spin.className = 'spin';
+      el.append(spin, document.createElement('span'));
+      document.body.appendChild(el);
+    }
+    el.lastChild.textContent = message;
+    el.classList.add('show');
+  }
+
+  // ---- fetch who liked / reposted a post, on demand, and attach to the record ----
+  // one config per engagement kind keeps the menu, grab, and panel in sync
+  const ENGAGER = {
+    like: {
+      tabType: 'like', field: 'likers', countField: 'likeCount', partialField: 'likersPartial',
+      menu: 'menu_who_liked', refresh: 'menu_refresh_likers', icon: '❤',
+      grabbing: 'likers_grabbing', grabbingN: 'likers_grabbing_n', done: 'likers_done', none: 'likers_none', failed: 'likers_failed',
+      summary: 'likers_summary', summaryOf: 'likers_summary_of',
+    },
+    repost: {
+      tabType: 'repost', field: 'reposters', countField: 'repostCount', partialField: 'repostersPartial',
+      menu: 'menu_who_reposted', refresh: 'menu_refresh_reposters', icon: '🔁',
+      grabbing: 'reposters_grabbing', grabbingN: 'reposters_grabbing_n', done: 'reposters_done', none: 'reposters_none', failed: 'reposters_failed',
+      summary: 'reposters_summary', summaryOf: 'reposters_summary_of',
+    },
+    quote: {
+      tabType: 'quote', field: 'quoters', countField: 'quoteCount', partialField: 'quotersPartial',
+      menu: 'menu_who_quoted', refresh: 'menu_refresh_quoters', icon: '❝',
+      grabbing: 'quoters_grabbing', grabbingN: 'quoters_grabbing_n', done: 'quoters_done', none: 'quoters_none', failed: 'quoters_failed',
+      summary: 'quoters_summary', summaryOf: 'quoters_summary_of',
+    },
+  };
+
+  // ERR_* codes from sw.js / content.js / inject.js (which can't use
+  // chrome.i18n) → locale keys; unknown strings surface verbatim
+  const ENGAGER_ERRORS = {
+    ERR_NO_TAB: 'err_no_tab',
+    ERR_TAB_UNREACHABLE: 'err_tab_unreachable',
+    ERR_TIMEOUT: 'err_timeout',
+    ERR_NO_TEMPLATE: 'err_no_template',
+    ERR_NO_POST_ID: 'err_no_post_id',
+    ERR_REJECTED: 'err_rejected',
+    ERR_BAD_RESPONSE: 'err_bad_response',
+  };
+  function engagerError(err, K) {
+    if (!err) return t(K.failed);
+    return ENGAGER_ERRORS[err] ? t(ENGAGER_ERRORS[err]) : err;
+  }
+
+  const grabbingEngagers = new Set(); // "kind|source|key" currently in flight
+  // "tabType|postId" -> { kind, known } for grabs in flight, so ENGAGERS_PROGRESS
+  // messages (which carry only postId+tabType) can render "N / target" with the
+  // right label and a target capped at the post's known count
+  const engagerTargets = new Map();
+
+  // live progress relayed from inject.js via the SW broadcast — climbs toward
+  // the safety cap so the user sees the limit as it's approached
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (!msg || msg.type !== 'ENGAGERS_PROGRESS') return;
+    if (!grabbingEngagers.size) return; // nothing in flight (late/stray message)
+    const K = ENGAGER[msg.tabType];
+    if (!K) return;
+    const info = engagerTargets.get(msg.tabType + '|' + msg.postId);
+    // cap the shown target at the post's known count when we have it, else the
+    // hard cap — so a 200-like post reads "180 / 200", a viral one "8,300 / 10,000"
+    const target = (info && info.known > 0) ? Math.min(info.known, msg.max) : msg.max;
+    fetchBanner(t(K.grabbingN, { n: msg.count.toLocaleString(), max: target.toLocaleString() }));
+  });
+
+  async function grabEngagers(p, kind) {
+    const K = ENGAGER[kind];
+    const gid = kind + '|' + p._source + '|' + p._key;
+    if (grabbingEngagers.has(gid)) return;
+    grabbingEngagers.add(gid);
+    engagerTargets.set(K.tabType + '|' + p.id, { kind, known: p[K.countField] || 0 });
+    fetchBanner(t(K.grabbing)); // large lists take a while to page through
+    let r = null;
+    try {
+      r = await chrome.runtime.sendMessage({
+        type: 'GET_LIKERS', postId: p.id, source: p._source, key: p._key, tabType: K.tabType,
+      });
+    } catch (_) { /* r stays null */ }
+    grabbingEngagers.delete(gid);
+    engagerTargets.delete(K.tabType + '|' + p.id);
+    if (!grabbingEngagers.size) fetchBanner(null); // another grab may still be paging
+    if (!r || !r.ok) { toast(engagerError(r && r.error, K), true); return; }
+    toast(r.count ? t(K.done, { n: r.count }) : t(K.none));
+    // the card's cached DOM was built without this list, and adding it doesn't
+    // change the cache key — evict it so the panel actually renders
+    cardCache.delete(keyOf(p));
+    await loadPosts();
+    update(true);
+  }
+
   let menuEl = null;
   function closeCardMenu() {
     if (menuEl) menuEl.remove();
@@ -902,6 +1076,14 @@
       copiedFx(copyMd);
     });
     menuEl.appendChild(copyMd);
+
+    for (const kind of ['like', 'repost', 'quote']) {
+      const K = ENGAGER[kind];
+      const has = !!p[K.field];
+      const btn = menuBtn(K.icon, t(has ? K.refresh : K.menu));
+      btn.addEventListener('click', () => { closeCardMenu(); grabEngagers(p, kind); });
+      menuEl.appendChild(btn);
+    }
 
     const del = menuBtn('🗑', t('menu_delete_post'));
     del.className = 'menuDanger';

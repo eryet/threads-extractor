@@ -1025,6 +1025,52 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
 
+      case 'GET_LIKERS': { // dashboard: fetch who liked / reposted / quoted one post, on demand
+        const FIELDS = { like: 'likers', repost: 'reposters', quote: 'quoters' };
+        const tabType = FIELDS[msg.tabType] ? msg.tabType : 'like';
+        const tab = await findThreadsTab();
+        // errors are ERR_* codes; the dashboard translates them (err_* locale
+        // keys) so toasts follow the UI language
+        if (!tab) {
+          sendResponse({ ok: false, error: 'ERR_NO_TAB' });
+          break;
+        }
+        let r;
+        try {
+          r = await chrome.tabs.sendMessage(tab.id, {
+            type: 'FETCH_ENGAGERS', postId: msg.postId, tabType,
+          });
+        } catch (e) {
+          // typical after the extension itself is reloaded: the old content
+          // script is orphaned, and even after a tab reload the fresh
+          // inject.js needs to observe an authenticated request (a grab
+          // produces one; plain scrolling doesn't) before it can fetch
+          sendResponse({ ok: false, error: 'ERR_TAB_UNREACHABLE' });
+          break;
+        }
+        if (!r || !r.ok) {
+          // null error → dashboard falls back to its localized generic message
+          sendResponse({ ok: false, error: (r && r.error) || null });
+          break;
+        }
+        // attach to the stored post so it persists and flows into exports
+        const buckets = {
+          saved: store.posts, liked: store.likedPosts,
+          feed: store.feedPosts, profile: store.profilePosts,
+        };
+        const field = FIELDS[tabType];
+        const bucket = buckets[msg.source];
+        const rec = bucket && bucket[msg.key];
+        if (rec) {
+          rec[field] = r.engagers || [];
+          rec[field + 'At'] = new Date().toISOString();
+          rec[field + 'Partial'] = !!r.partial;
+          await persist();
+        }
+        sendResponse({ ok: true, engagers: r.engagers || [], partial: !!r.partial, count: (r.engagers || []).length });
+        break;
+      }
+
       case 'DELETE_POSTS': { // dashboard: delete an explicit set of posts by storage key
         const buckets = {
           saved: store.posts,
@@ -1068,6 +1114,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           store.state.stopNote = null;
         }
         await persist();
+        sendResponse({ ok: true });
+        break;
+
+      case 'ENGAGERS_PROGRESS': // content.js → dashboard broadcast; the SW just acks
         sendResponse({ ok: true });
         break;
 

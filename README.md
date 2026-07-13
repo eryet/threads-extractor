@@ -44,6 +44,10 @@ no backend, no accounts, no analytics, and nothing ever leaves your machine.
   replies.
 - Three layouts: grid, list, and a Reddit-style **compact** view.
 - Windowed virtualization keeps thousands of posts scrolling smoothly.
+- **Who liked this** — from any card's ⋯ menu, fetch the full list of accounts
+  that liked (or reposted) that post on demand, shown inline with a
+  copy-handles button. Pages through the whole list newest-first (needs a
+  threads.com tab open); very large lists stop at a safety cap.
 
 **Export / Import**
 
