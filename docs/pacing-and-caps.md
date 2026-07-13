@@ -32,6 +32,19 @@ A post that hits the 10 000-account cap costs ~100 requests over roughly
 25–60 s (jittered). Typical posts (≤ a few hundred likers) are 1–5 requests.
 A mid-run page failure keeps what was already collected instead of erroring.
 
+## Surfacing the cap to the user
+
+`fetchEngagers` calls `onProgress(count)` after each page. inject.js posts a
+`TSE_ENGAGERS_PROGRESS` window message (with `count` and `max` =
+`ENGAGERS_MAX_TOTAL`); content.js relays it as an `ENGAGERS_PROGRESS` runtime
+message, which the dashboard page receives directly (a content script's
+runtime message reaches extension pages — the SW ignores it). The dashboard's
+fetch banner then shows a live "N / target max" count that climbs and visibly
+halts at the cap. `target` is capped at the post's known count
+(`likeCount` / `repostCount` / `quoteCount`) when available, so a small post
+reads "180 / 200" and a viral one "8,300 / 10,000". The already-fetched panel
+still flags `partial` ("N of M") once the cap is hit.
+
 ## Ban-risk reasoning (as of 2026-07)
 
 - The engager fetch replays `BarcelonaFeedbackHubTabQuery` with headers/body

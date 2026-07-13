@@ -151,6 +151,12 @@
       if (settle) { pendingEngagers.delete(d.reqId); settle(d); }
       return;
     }
+    if (d.type === 'TSE_ENGAGERS_PROGRESS') {
+      // fire-and-forget to the extension; the dashboard page listens and
+      // updates its fetch banner (the SW ignores it)
+      send({ type: 'ENGAGERS_PROGRESS', postId: d.postId, tabType: d.tabType, count: d.count, max: d.max });
+      return;
+    }
     if (d.type === 'TSE_FEEDS') {
       send({ type: 'FEEDS', feeds: d.feeds || [] });
       return;

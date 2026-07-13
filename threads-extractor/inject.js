@@ -65,6 +65,10 @@
     BarcelonaIsCrawlerrelayprovider: false,
     BarcelonaHasCommunityTopContributorsrelayprovider: true,
   };
+  // engager pagination bounds — ~100/page is server-capped, so these bound
+  // very large/viral posts. Exposed to progress messages so the dashboard can
+  // show "N / MAX" and make the safety cap visible to the user.
+  const ENGAGERS_MAX_PAGES = 120, ENGAGERS_MAX_TOTAL = 10000, ENGAGERS_PAGE_SIZE = 100;
   let gqlTemplate = null;        // {url, headers, body} of a recent authenticated graphql POST
   let liveEngagersDocId = null;  // doc_id captured from a real FeedbackHub request, if seen
   const harvestedProviders = {}; // __relay_internal__pv__* -> value observed live
@@ -302,7 +306,9 @@
   }
 
   // Issue BarcelonaFeedbackHubTabQuery for one post and page through the actors.
-  async function fetchEngagers(postId, tabType) {
+  // onProgress(count) fires after each page so the dashboard can show progress
+  // toward ENGAGERS_MAX_TOTAL live.
+  async function fetchEngagers(postId, tabType, onProgress) {
     // Errors are ERR_* codes, translated by the dashboard (err_* locale keys) —
     // MAIN world has no chrome.i18n, so human text can't be produced here.
     // The template is harvested from an authenticated GraphQL request (body
@@ -321,9 +327,8 @@
     const seen = new Set();
     const engagers = [];
     let after = null, pages = 0, partial = false;
-    // ~100 per page (server-capped), so these bound very large/viral posts;
     // partial is flagged if we stop before Threads runs out
-    const MAX_PAGES = 120, MAX_TOTAL = 10000, PAGE_SIZE = 100;
+    const MAX_PAGES = ENGAGERS_MAX_PAGES, MAX_TOTAL = ENGAGERS_MAX_TOTAL, PAGE_SIZE = ENGAGERS_PAGE_SIZE;
     while (pages < MAX_PAGES && engagers.length < MAX_TOTAL) {
       pages++;
       // most_recent + first/after paginates the full list (default sort caps ~100)
@@ -377,6 +382,7 @@
           at,
         });
       }
+      if (onProgress) { try { onProgress(engagers.length); } catch (_) {} }
       const pi = conn.page_info || {};
       if (pi.has_next_page && pi.end_cursor) {
         after = pi.end_cursor;
@@ -476,7 +482,12 @@
     const d = ev.data;
     if (ev.source !== window || !d || d.__tse !== true) return;
     if (d.type === 'TSE_GET_ENGAGERS') {
-      fetchEngagers(d.postId, d.tabType).then(
+      const onProgress = (count) => window.postMessage({
+        __tse: true, type: 'TSE_ENGAGERS_PROGRESS', reqId: d.reqId,
+        postId: String(d.postId), tabType: d.tabType || 'like',
+        count, max: ENGAGERS_MAX_TOTAL,
+      }, window.location.origin);
+      fetchEngagers(d.postId, d.tabType, onProgress).then(
         (r) => window.postMessage({ __tse: true, type: 'TSE_ENGAGERS', reqId: d.reqId, ok: true, engagers: r.engagers, partial: r.partial }, window.location.origin),
         (e) => window.postMessage({ __tse: true, type: 'TSE_ENGAGERS', reqId: d.reqId, ok: false, error: String((e && e.message) || e) }, window.location.origin)
       );

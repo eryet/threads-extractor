@@ -272,6 +272,9 @@
   "likers_grabbing": {
     "message": "正在抓取按讚的人…"
   },
+  "likers_grabbing_n": {
+    "message": "正在抓取按讚的人… {n} / {max} 上限"
+  },
   "likers_done": {
     "message": "取得 {n} 位按讚的人"
   },
@@ -284,6 +287,9 @@
   "reposters_grabbing": {
     "message": "正在抓取轉發的人…"
   },
+  "reposters_grabbing_n": {
+    "message": "正在抓取轉發的人… {n} / {max} 上限"
+  },
   "reposters_done": {
     "message": "取得 {n} 位轉發的人"
   },
@@ -295,6 +301,9 @@
   },
   "quoters_grabbing": {
     "message": "正在抓取引用的人…"
+  },
+  "quoters_grabbing_n": {
+    "message": "正在抓取引用的人… {n} / {max} 上限"
   },
   "quoters_done": {
     "message": "取得 {n} 位引用的人"

@@ -272,6 +272,9 @@
   "likers_grabbing": {
     "message": "Fetching who liked this…"
   },
+  "likers_grabbing_n": {
+    "message": "Fetching who liked this… {n} / {max} max"
+  },
   "likers_done": {
     "message": "Got {n} liker(s)"
   },
@@ -284,6 +287,9 @@
   "reposters_grabbing": {
     "message": "Fetching who reposted this…"
   },
+  "reposters_grabbing_n": {
+    "message": "Fetching who reposted this… {n} / {max} max"
+  },
   "reposters_done": {
     "message": "Got {n} reposter(s)"
   },
@@ -295,6 +301,9 @@
   },
   "quoters_grabbing": {
     "message": "Fetching who quoted this…"
+  },
+  "quoters_grabbing_n": {
+    "message": "Fetching who quoted this… {n} / {max} max"
   },
   "quoters_done": {
     "message": "Got {n} quote(s)"

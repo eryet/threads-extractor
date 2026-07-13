@@ -926,19 +926,19 @@
     like: {
       tabType: 'like', field: 'likers', countField: 'likeCount', partialField: 'likersPartial',
       menu: 'menu_who_liked', refresh: 'menu_refresh_likers', icon: '❤',
-      grabbing: 'likers_grabbing', done: 'likers_done', none: 'likers_none', failed: 'likers_failed',
+      grabbing: 'likers_grabbing', grabbingN: 'likers_grabbing_n', done: 'likers_done', none: 'likers_none', failed: 'likers_failed',
       summary: 'likers_summary', summaryOf: 'likers_summary_of',
     },
     repost: {
       tabType: 'repost', field: 'reposters', countField: 'repostCount', partialField: 'repostersPartial',
       menu: 'menu_who_reposted', refresh: 'menu_refresh_reposters', icon: '🔁',
-      grabbing: 'reposters_grabbing', done: 'reposters_done', none: 'reposters_none', failed: 'reposters_failed',
+      grabbing: 'reposters_grabbing', grabbingN: 'reposters_grabbing_n', done: 'reposters_done', none: 'reposters_none', failed: 'reposters_failed',
       summary: 'reposters_summary', summaryOf: 'reposters_summary_of',
     },
     quote: {
       tabType: 'quote', field: 'quoters', countField: 'quoteCount', partialField: 'quotersPartial',
       menu: 'menu_who_quoted', refresh: 'menu_refresh_quoters', icon: '❝',
-      grabbing: 'quoters_grabbing', done: 'quoters_done', none: 'quoters_none', failed: 'quoters_failed',
+      grabbing: 'quoters_grabbing', grabbingN: 'quoters_grabbing_n', done: 'quoters_done', none: 'quoters_none', failed: 'quoters_failed',
       summary: 'quoters_summary', summaryOf: 'quoters_summary_of',
     },
   };
@@ -960,11 +960,31 @@
   }
 
   const grabbingEngagers = new Set(); // "kind|source|key" currently in flight
+  // "tabType|postId" -> { kind, known } for grabs in flight, so ENGAGERS_PROGRESS
+  // messages (which carry only postId+tabType) can render "N / target" with the
+  // right label and a target capped at the post's known count
+  const engagerTargets = new Map();
+
+  // live progress relayed from inject.js via the SW broadcast — climbs toward
+  // the safety cap so the user sees the limit as it's approached
+  chrome.runtime.onMessage.addListener((msg) => {
+    if (!msg || msg.type !== 'ENGAGERS_PROGRESS') return;
+    if (!grabbingEngagers.size) return; // nothing in flight (late/stray message)
+    const K = ENGAGER[msg.tabType];
+    if (!K) return;
+    const info = engagerTargets.get(msg.tabType + '|' + msg.postId);
+    // cap the shown target at the post's known count when we have it, else the
+    // hard cap — so a 200-like post reads "180 / 200", a viral one "8,300 / 10,000"
+    const target = (info && info.known > 0) ? Math.min(info.known, msg.max) : msg.max;
+    fetchBanner(t(K.grabbingN, { n: msg.count.toLocaleString(), max: target.toLocaleString() }));
+  });
+
   async function grabEngagers(p, kind) {
     const K = ENGAGER[kind];
     const gid = kind + '|' + p._source + '|' + p._key;
     if (grabbingEngagers.has(gid)) return;
     grabbingEngagers.add(gid);
+    engagerTargets.set(K.tabType + '|' + p.id, { kind, known: p[K.countField] || 0 });
     fetchBanner(t(K.grabbing)); // large lists take a while to page through
     let r = null;
     try {
@@ -973,6 +993,7 @@
       });
     } catch (_) { /* r stays null */ }
     grabbingEngagers.delete(gid);
+    engagerTargets.delete(K.tabType + '|' + p.id);
     if (!grabbingEngagers.size) fetchBanner(null); // another grab may still be paging
     if (!r || !r.ok) { toast(engagerError(r && r.error, K), true); return; }
     toast(r.count ? t(K.done, { n: r.count }) : t(K.none));
