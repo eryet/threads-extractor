@@ -413,6 +413,9 @@
   "live_search": {
     "message": "擷取搜尋「{q}」中…"
   },
+  "detected_search": {
+    "message": "你的 Threads 分頁正在搜尋「{q}」— 點一下套用"
+  },
   "btn_reset_filters": {
     "message": "清除所有篩選"
   },

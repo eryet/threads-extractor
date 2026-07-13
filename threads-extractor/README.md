@@ -101,8 +101,11 @@ low-volume.
 
 ### Search results (any query · Top or Recent)
 
-1. In the popup's **Search** tab, type the search terms, pick **Max results**
-   and whether to use the **"Recent" filter** (default on — results paginate
+1. In the popup's **Search** tab, type the search terms — or just search on
+   Threads first: if your Threads tab is already on `/search?q=…`, the popup
+   detects it and prefills the query and Top/Recent filter from the tab
+   (a click-to-use hint appears under the box). Pick **Max results** and
+   whether to use the **"Recent" filter** (default on — results paginate
    newest-first; off = Threads' "Top" ranking), then **Grab search results**.
 2. The extension navigates your Threads tab to `/search?q=…`, auto-scrolls
    with the same throttled pacing, and stops at the target count or the end

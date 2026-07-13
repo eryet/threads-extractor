@@ -41,6 +41,7 @@
     searchCount: $('searchCount'), searchStatus: $('searchStatus'),
     searchBar: $('searchBar'), searchBarFill: $('searchBarFill'),
     searchQuery: $('searchQuery'), searchTarget: $('searchTarget'), searchRecent: $('searchRecent'),
+    searchDetected: $('searchDetected'),
     searchStart: $('btnSearchStart'), searchStop: $('btnSearchStop'),
     searchHistHead: $('searchHistHead'), searchHistory: $('searchHistory'),
     searchJson: $('btnSearchJson'), searchCsv: $('btnSearchCsv'), searchMd: $('btnSearchMd'),
@@ -546,6 +547,37 @@
   });
 
   // ---- search controls ----
+
+  // The search open in the user's Threads tab (/search?q=…): prefill the form
+  // from it so grabbing what's already on screen needs no typing.
+  async function detectTabSearch() {
+    try {
+      const tabs = await chrome.tabs.query({
+        url: ['https://www.threads.com/search*', 'https://threads.com/search*'],
+      });
+      const tab = tabs.find((t) => t.active) || tabs[0];
+      if (!tab || !tab.url) return null;
+      const u = new URL(tab.url);
+      const query = (u.searchParams.get('q') || '').trim();
+      if (!query) return null;
+      return { query, recent: u.searchParams.get('filter') === 'recent' };
+    } catch (_) { return null; }
+  }
+
+  function applyDetectedSearch(det) {
+    els.searchQuery.value = det.query;
+    els.searchRecent.checked = det.recent; // mirror the tab's serp, Top included
+  }
+
+  async function offerDetectedSearch() {
+    const det = await detectTabSearch();
+    if (!det) return;
+    els.searchDetected.textContent = t('detected_search', { q: det.query });
+    els.searchDetected.hidden = false;
+    els.searchDetected.onclick = () => applyDetectedSearch(det);
+    if (!els.searchQuery.value.trim()) applyDetectedSearch(det);
+  }
+
   async function startSearch() {
     const query = els.searchQuery.value.trim();
     if (!query) {
@@ -656,6 +688,7 @@
       if (gp.liked.until) els.likedUntil.value = gp.liked.until;
     }
   }).catch(() => {}).finally(() => {
+    offerDetectedSearch(); // prefill from the tab AFTER prefs, so it wins
     refresh();
     pollTimer = setInterval(refresh, 800);
   });

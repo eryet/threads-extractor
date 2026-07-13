@@ -413,6 +413,9 @@
   "live_search": {
     "message": "grabbing search “{q}”…"
   },
+  "detected_search": {
+    "message": "on your Threads tab: “{q}” — click to use it"
+  },
   "btn_reset_filters": {
     "message": "Clear all filters"
   },
