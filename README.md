@@ -1,5 +1,8 @@
 # Threads Extractor
 
+<a title="Users" target="_blank" href="https://chromewebstore.google.com/detail/threads-extractor/ljibcmgickjolhnjcmihoocelmlfofkl"><img src="https://img.shields.io/chrome-web-store/users/ljibcmgickjolhnjcmihoocelmlfofkl"></a>
+<a title="Version" target="_blank" href="https://chromewebstore.google.com/detail/threads-extractor/ljibcmgickjolhnjcmihoocelmlfofkl"><img src="https://img.shields.io/chrome-web-store/v/ljibcmgickjolhnjcmihoocelmlfofkl"></a>
+
 A personal MV3 Chrome extension that grabs **your own** [Threads](https://www.threads.com)
 data — saved posts, feeds, and profiles — and gives you a local dashboard to
 browse, filter, and export all of it. Everything runs inside your browser:
@@ -56,8 +59,8 @@ no backend, no accounts, no analytics, and nothing ever leaves your machine.
 
 ## Install
 
-**From the Chrome Web Store** (pending review):
-[Threads Extractor](https://chromewebstore.google.com/detail/ljibcmgickjolhnjcmihoocelmlfofkl)
+**From the Chrome Web Store:**
+[Threads Extractor](https://chromewebstore.google.com/detail/threads-extractor/ljibcmgickjolhnjcmihoocelmlfofkl)
 
 **Or unpacked, from source:**
 
