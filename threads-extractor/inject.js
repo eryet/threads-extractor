@@ -41,14 +41,16 @@
   const CONN_KINDS = { saved_media: 'saved', liked_media: 'liked', feedData: 'feed', results: 'feed', mediaData: 'profile' };
   const MARKERS = Object.keys(CONN_KINDS);
 
-  // ---- Post engagers: who liked / reposted a post (verified live 2026-07-09) ----
-  // The post's "View activity" → Likes/Reposts list. The DEFAULT sort caps at
-  // ~100 with no pagination (BarcelonaFeedbackHubTabQuery); the "Most recent"
-  // sort uses a paginating refetch query that returns the WHOLE list, so we use
-  // that instead:
+  // ---- Post engagers: who liked / reposted / quoted a post ----
+  // (like/repost verified live 2026-07-09; 'quote' added 2026-07-13 — same
+  // query and response shape, the tab_type value is all that differs)
+  // The post's "View activity" → Likes/Reposts/Quotes list. The DEFAULT sort
+  // caps at ~100 with no pagination (BarcelonaFeedbackHubTabQuery); the "Most
+  // recent" sort uses a paginating refetch query that returns the WHOLE list,
+  // so we use that instead:
   //   query BarcelonaFeedbackHubTabContentRefetchableQuery  doc_id 27564308013202368
   //   connection data.feedback_hub_tab_items
-  //   variables: { post_id: <numeric pk>, tab_type: 'like'|'repost',
+  //   variables: { post_id: <numeric pk>, tab_type: 'like'|'repost'|'quote',
   //     sort_type: 'most_recent', first: <n>, after: <cursor>, + relay providers }
   //   node: { actor: {username, pk}, extra: {context}, timestamp }, page_info
   //   (the server caps page size at ~100 regardless of `first`)

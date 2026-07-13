@@ -1117,6 +1117,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         sendResponse({ ok: true });
         break;
 
+      case 'ENGAGERS_PROGRESS': // content.js → dashboard broadcast; the SW just acks
+        sendResponse({ ok: true });
+        break;
+
       default:
         sendResponse({ ok: false, error: 'unknown message: ' + msg.type });
     }
