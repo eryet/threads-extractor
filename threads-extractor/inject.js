@@ -374,7 +374,8 @@
       const pi = conn.page_info || {};
       if (pi.has_next_page && pi.end_cursor) {
         after = pi.end_cursor;
-        await new Promise((r) => setTimeout(r, 120)); // gentle throttle between pages
+        // gentle throttle between pages — jittered so the cadence isn't machine-regular
+        await new Promise((r) => setTimeout(r, 120 + Math.random() * 240));
       } else { partial = !!pi.has_next_page; break; }
     }
     if (pages >= MAX_PAGES || engagers.length >= MAX_TOTAL) partial = true;
