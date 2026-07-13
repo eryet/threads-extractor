@@ -374,9 +374,6 @@
   "lbl_search_target": {
     "message": "最多結果數"
   },
-  "lbl_search_recent": {
-    "message": "「最新」篩選（新→舊）"
-  },
   "btn_grab_search": {
     "message": "擷取搜尋結果"
   },
@@ -415,6 +412,27 @@
   },
   "detected_search": {
     "message": "你的 Threads 分頁正在搜尋「{q}」— 點一下套用"
+  },
+  "lbl_search_filter": {
+    "message": "結果篩選"
+  },
+  "filter_recent": {
+    "message": "最新（新→舊）"
+  },
+  "filter_top": {
+    "message": "熱門"
+  },
+  "filter_profiles": {
+    "message": "個人檔案（帳號）"
+  },
+  "head_export_posts": {
+    "message": "匯出貼文"
+  },
+  "head_export_accounts": {
+    "message": "匯出帳號"
+  },
+  "st_search_accounts": {
+    "message": "{m} 個帳號"
   },
   "btn_reset_filters": {
     "message": "清除所有篩選"

@@ -174,6 +174,7 @@
       kind: d.kind || 'saved',
       connKey: d.connKey,
       posts: d.posts || [],
+      users: d.users || null,
       pageInfo: d.pageInfo,
       origin: d.origin,
       feedUrl: d.feedUrl || null,
@@ -196,7 +197,8 @@
         c.idle = 0;
         if (d.pageInfo && d.pageInfo.has_next_page === false) c.done = true;
       }
-    } else if (msg.kind === mode) {
+    } else if (msg.kind === mode ||
+               (mode === 'search' && msg.kind === 'search_users')) {
       idleCycles = 0;
       if (d.pageInfo && d.pageInfo.has_next_page === false) sawEnd = true;
     }

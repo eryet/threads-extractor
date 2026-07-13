@@ -374,9 +374,6 @@
   "lbl_search_target": {
     "message": "Max results"
   },
-  "lbl_search_recent": {
-    "message": "“Recent” filter (newest first)"
-  },
   "btn_grab_search": {
     "message": "Grab search results"
   },
@@ -415,6 +412,27 @@
   },
   "detected_search": {
     "message": "on your Threads tab: “{q}” — click to use it"
+  },
+  "lbl_search_filter": {
+    "message": "Results filter"
+  },
+  "filter_recent": {
+    "message": "Recent (newest first)"
+  },
+  "filter_top": {
+    "message": "Top"
+  },
+  "filter_profiles": {
+    "message": "Profiles (accounts)"
+  },
+  "head_export_posts": {
+    "message": "Export posts"
+  },
+  "head_export_accounts": {
+    "message": "Export accounts"
+  },
+  "st_search_accounts": {
+    "message": "{m} account(s)"
   },
   "btn_reset_filters": {
     "message": "Clear all filters"

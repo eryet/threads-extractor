@@ -231,12 +231,17 @@
     }
     input[type="date"]:focus { outline: 1px solid #4a4a4a; }
     input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
-    input[type="checkbox"] {
+    .targetRow select {
       margin-left: auto;
-      width: 16px; height: 16px;
-      accent-color: var(--text);
-      cursor: pointer;
+      padding: 6px 9px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      background: var(--card);
+      color: var(--text);
+      font-size: 12px;
+      font-family: inherit;
     }
+    .targetRow select:focus { outline: 1px solid #4a4a4a; }
 
     /* ---- remembered searches ---- */
     #searchHistory {
@@ -524,8 +529,12 @@
       <input type="number" id="searchTarget" min="1" max="2000" step="1" value="200" />
     </div>
     <div class="targetRow">
-      <label for="searchRecent" data-i18n="lbl_search_recent">"Recent" filter (newest first)</label>
-      <input type="checkbox" id="searchRecent" checked />
+      <label for="searchFilter" data-i18n="lbl_search_filter">Results filter</label>
+      <select id="searchFilter">
+        <option value="recent" data-i18n="filter_recent">Recent (newest first)</option>
+        <option value="top" data-i18n="filter_top">Top</option>
+        <option value="profiles" data-i18n="filter_profiles">Profiles (accounts)</option>
+      </select>
     </div>
 
     <button id="btnSearchStart" class="act primary" data-i18n="btn_grab_search">Grab search results</button>
@@ -537,11 +546,17 @@
     </div>
     <div id="searchHistory" hidden></div>
 
-    <div class="exportHead" data-i18n="head_export">Export</div>
+    <div class="exportHead" data-i18n="head_export_posts">Export posts</div>
     <div class="row">
       <button id="btnSearchJson" class="act" disabled>JSON</button>
       <button id="btnSearchCsv" class="act" disabled>CSV</button>
       <button id="btnSearchMd" class="act" disabled>MD</button>
+    </div>
+    <div class="exportHead" id="searchAccHead" data-i18n="head_export_accounts" hidden>Export accounts</div>
+    <div class="row" id="searchAccRow" hidden>
+      <button id="btnSearchAccJson" class="act">JSON</button>
+      <button id="btnSearchAccCsv" class="act">CSV</button>
+      <button id="btnSearchAccMd" class="act">MD</button>
     </div>
     <button id="btnSearchClear" class="act ghost" data-i18n="btn_clear_search" disabled>Clear search data</button>
   </div>

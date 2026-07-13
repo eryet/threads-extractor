@@ -99,26 +99,33 @@ one profile at a time, with the same deliberately throttled scrolling — a
 private account you don't follow simply returns nothing. Keep it personal and
 low-volume.
 
-### Search results (any query · Top or Recent)
+### Search results (any query · Recent / Top / Profiles)
 
 1. In the popup's **Search** tab, type the search terms — or just search on
    Threads first: if your Threads tab is already on `/search?q=…`, the popup
-   detects it and prefills the query and Top/Recent filter from the tab
-   (a click-to-use hint appears under the box). Pick **Max results** and
-   whether to use the **"Recent" filter** (default on — results paginate
-   newest-first; off = Threads' "Top" ranking), then **Grab search results**.
+   detects it and prefills the query and filter from the tab (a click-to-use
+   hint appears under the box). Pick **Max results** and the **results
+   filter** — all three of Threads' serp tabs are supported: **Recent**
+   (default; paginates newest-first), **Top** (Threads' ranking), or
+   **Profiles** (matching accounts instead of posts) — then **Grab search
+   results**.
 2. The extension navigates your Threads tab to `/search?q=…`, auto-scrolls
    with the same throttled pacing, and stops at the target count or the end
    of the results.
-3. Each post is tagged with its query (`searchQuery`), the filter used
-   (`searchRecent`), and capture order (`searchOrder`, 1 = first result at
-   grab time). Different queries **accumulate**; re-grabbing a query replaces
-   only that query's earlier snapshot.
-4. The popup keeps a **remembered searches** list (last 15 queries): click a
-   row to refill the form, or its ▶ button to re-run that search as-is.
-5. Export with the Search tab's **JSON / CSV / MD** buttons (`query` +
-   `searchOrder` columns in CSV; Markdown groups by query). In the dashboard,
-   search results are a source of their own with per-query filter chips.
+3. Recent/Top grabs store posts tagged with the query (`searchQuery`), the
+   filter used (`searchFilter`), and capture order (`searchOrder`, 1 = first
+   result at grab time). Profiles grabs store flat **account records**
+   (handle, name, bio, follower count, verified/private flags, profile URL)
+   with the same query tagging. Different queries **accumulate**; re-grabbing
+   a query replaces only that query's earlier snapshot (posts and accounts).
+4. The popup keeps a **remembered searches** list (last 15 queries, filter
+   included): click a row to refill the form, or its ▶ button to re-run that
+   search as-is.
+5. Export posts with **Export posts** (`query` + `searchOrder` CSV columns;
+   Markdown groups by query) and accounts with **Export accounts** (appears
+   once a Profiles grab has stored some). In the dashboard, search *posts*
+   are a source of their own with per-query filter chips; account records
+   are export-only (the dashboard renders posts).
 
 ### Dashboard (browse everything captured)
 
@@ -185,6 +192,7 @@ threads.com tab
 | Search query (2026-07-13) | `BarcelonaSearchResultsQuery` (page `/search?q=<q>`, `&filter=recent` for the Recent tab) |
 | Search path | `data…searchResults.edges[].node.thread.thread_items[].post` — the connection is `searchResults` itself (`edges` + `page_info` directly on it); the Profiles serp reuses it with non-post nodes, which are skipped |
 | Search attribution | request `variables.query` (the term) + `variables.recent` (`1` = Recent tab, `0` = Top); embedded first batches join their `adp_BarcelonaSearchResultsQueryRelayPreloader_…` registration like feeds do |
+| Search profiles (2026-07-13) | `BarcelonaSearchUserResultsQuery` (page `/search?q=<q>&filter=profiles`, variables `{query}`); same `searchResults` connection but node = `XDTUserDict` `{username, full_name, biography, follower_count, is_verified, text_post_app_is_private, pk}` — captured as flat account records |
 | Pagination | `<conn>.page_info.{end_cursor, has_next_page}` on every connection |
 | Post URL | `https://www.threads.com/@{user.username}/post/{code}` |
 | Saved timestamp | **not exposed** anywhere → `savedAt` is always `null` |

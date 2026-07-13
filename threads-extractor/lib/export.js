@@ -162,5 +162,56 @@
     return out.join('\n');
   }
 
-  window.TSEExport = { toJSON, toCSV, toMarkdown };
+  // ---- search "Profiles" serp results: flat account records, not posts ----
+
+  function sortProfileResults(list) {
+    return list.slice().sort((a, b) => {
+      const aq = a.searchQuery || '', bq = b.searchQuery || '';
+      if (aq !== bq) return aq < bq ? -1 : 1;
+      return (a.searchOrder || 0) - (b.searchOrder || 0);
+    });
+  }
+
+  function profilesToJSON(list) {
+    return JSON.stringify(sortProfileResults(list), null, 2);
+  }
+
+  function profilesToCSV(list) {
+    const header = ['query', 'searchOrder', 'handle', 'name', 'followers', 'verified', 'private', 'bio', 'url', 'capturedAt'];
+    const rows = [header.join(',')];
+    for (const u of sortProfileResults(list)) {
+      rows.push([u.searchQuery, u.searchOrder, u.handle, u.name, u.followers,
+        u.verified, u.private, u.bio, u.url, u.capturedAt].map(csvCell).join(','));
+    }
+    // BOM so Excel opens UTF-8 (CJK text) correctly
+    return '﻿' + rows.join('\r\n');
+  }
+
+  function profilesToMarkdown(list) {
+    const sorted = sortProfileResults(list);
+    const out = [
+      '# Threads search accounts',
+      '',
+      `${sorted.length} accounts · exported ${new Date().toISOString().slice(0, 10)}`,
+      '',
+    ];
+    let currentQuery = null;
+    for (const u of sorted) {
+      if (u.searchQuery !== currentQuery) {
+        currentQuery = u.searchQuery;
+        out.push(`## Search: ${currentQuery || 'unknown'}`, '');
+      }
+      const bits = [`[${u.handle}](${u.url})`];
+      if (u.name) bits.push(u.name);
+      if (u.followers != null) bits.push(`${u.followers} followers`);
+      if (u.verified) bits.push('verified');
+      if (u.private) bits.push('private');
+      out.push(`- ${bits.join(' · ')}`);
+      if (u.bio) out.push(`  - ${String(u.bio).replace(/\s*\n\s*/g, ' — ')}`);
+    }
+    out.push('');
+    return out.join('\n');
+  }
+
+  window.TSEExport = { toJSON, toCSV, toMarkdown, profilesToJSON, profilesToCSV, profilesToMarkdown };
 })();

@@ -5,9 +5,10 @@
 //   tse_feed_posts : { [feedUrl + '|' + id]: normalizedPost }  (feed runs)
 //   tse_feed_state : run state — see FEED_STATE_DEFAULTS
 //   tse_feed_list  : { feeds: [{name, id}], at }               (discovered custom feeds)
-//   tse_search_posts   : { [query + '|' + id]: normalizedPost }  (search grabs)
-//   tse_search_state   : run state — see SEARCH_STATE_DEFAULTS
-//   tse_search_history : [{query, recent, target, at, count}]  (remembered searches)
+//   tse_search_posts    : { [query + '|' + id]: normalizedPost }  (search grabs)
+//   tse_search_profiles : { [query + '|' + pk]: accountRecord }   (Profiles serp)
+//   tse_search_state    : run state — see SEARCH_STATE_DEFAULTS
+//   tse_search_history  : [{query, filter, target, at, count}]  (remembered searches)
 importScripts('lib/normalize.js');
 
 let mem = null;              // in-memory mirror of storage
@@ -59,7 +60,7 @@ const PROFILE_STATE_DEFAULTS = {
 const SEARCH_STATE_DEFAULTS = {
   running: false,
   query: null,               // the term being grabbed
-  recent: true,              // serp filter: true = "Recent" (chronological), false = "Top"
+  filter: 'recent',          // serp tab: 'recent' (chronological) | 'top' | 'profiles' (accounts)
   target: 200,               // stop after this many results
   awaitingNav: false,
   tabId: null,
@@ -78,7 +79,7 @@ async function getStore() {
     const got = await chrome.storage.local.get([
       'tse_posts', 'tse_state', 'tse_feed_posts', 'tse_feed_state', 'tse_feed_list',
       'tse_profile_posts', 'tse_profile_state', 'tse_liked_posts', 'tse_liked_state',
-      'tse_search_posts', 'tse_search_state', 'tse_search_history',
+      'tse_search_posts', 'tse_search_profiles', 'tse_search_state', 'tse_search_history',
     ]);
     const SCROLL_STATE_DEFAULTS = {
       grabbing: false, hasNext: null, lastBatchAt: null, lastError: null, orderCounter: 0,
@@ -100,6 +101,7 @@ async function getStore() {
       profilePosts: got.tse_profile_posts || {},
       profileState: Object.assign({}, PROFILE_STATE_DEFAULTS, got.tse_profile_state),
       searchPosts: got.tse_search_posts || {},
+      searchProfiles: got.tse_search_profiles || {},
       searchState: Object.assign({}, SEARCH_STATE_DEFAULTS, got.tse_search_state),
       searchHistory: Array.isArray(got.tse_search_history) ? got.tse_search_history : [],
     };
@@ -115,7 +117,8 @@ function persist() {
       tse_feed_posts: mem.feedPosts, tse_feed_state: mem.feedState,
       tse_feed_list: mem.feedList,
       tse_profile_posts: mem.profilePosts, tse_profile_state: mem.profileState,
-      tse_search_posts: mem.searchPosts, tse_search_state: mem.searchState,
+      tse_search_posts: mem.searchPosts, tse_search_profiles: mem.searchProfiles,
+      tse_search_state: mem.searchState,
       tse_search_history: mem.searchHistory,
     }).then(
       () => { storageFull = false; },
@@ -336,7 +339,8 @@ async function finishProfile(store) {
 // ---- search run driving (one query, one page, scroll to target) ----
 
 function searchPath(st) {
-  return '/search?q=' + encodeURIComponent(st.query) + (st.recent ? '&filter=recent' : '');
+  const f = st.filter === 'recent' || st.filter === 'profiles' ? '&filter=' + st.filter : '';
+  return '/search?q=' + encodeURIComponent(st.query) + f; // 'top' = no filter param
 }
 
 async function navigateToSearch(store) {
@@ -376,7 +380,7 @@ async function finishSearch(store) {
 function rememberSearch(store, st) {
   store.searchHistory = store.searchHistory.filter((e) => e && e.query !== st.query);
   store.searchHistory.unshift({
-    query: st.query, recent: !!st.recent, target: st.target,
+    query: st.query, filter: st.filter, target: st.target,
     at: new Date().toISOString(), count: null,
   });
   while (store.searchHistory.length > SEARCH_HISTORY_MAX) store.searchHistory.pop();
@@ -627,7 +631,7 @@ async function handleSearchBatch(msg, sender) {
       const key = st.query + '|' + p.id;
       if (store.searchPosts[key]) continue;
       p.searchQuery = st.query;                    // which search found it
-      p.searchRecent = !!st.recent;                // serp filter used
+      p.searchFilter = st.filter;                  // serp tab used ('recent' | 'top')
       p.searchOrder = ++st.orderCounter;           // 1 = first result at grab time
       attachReplyTo(p, raw, now);
       store.searchPosts[key] = p;
@@ -636,6 +640,56 @@ async function handleSearchBatch(msg, sender) {
     } catch (e) { bad++; }
   }
   if (bad) logError('normalize:search', bad + ' post(s) failed to parse — skipped');
+  if (msg.pageInfo && typeof msg.pageInfo.has_next_page === 'boolean') {
+    st.hasNext = msg.pageInfo.has_next_page;
+  }
+  st.lastBatchAt = now;
+  touchProgress(st);
+  if (st.curCount >= st.target || st.hasNext === false) {
+    await finishSearch(store);                     // persists + STOP_SCROLL
+  } else {
+    await persist();
+  }
+  return { added, count: total() };
+}
+
+// Profiles serp: user results (accounts), not posts — stored as flat account
+// records in their own bucket, exported from the popup (the dashboard is
+// post-centric and does not render them)
+async function handleSearchUsersBatch(msg, sender) {
+  const store = await getStore();
+  const st = store.searchState;
+  const total = () => Object.keys(store.searchProfiles).length;
+  if (!st.running || st.awaitingNav) return { added: 0, count: total() };
+  if (sender && sender.tab && st.tabId != null && sender.tab.id !== st.tabId) {
+    return { added: 0, count: total() };
+  }
+  if (msg.searchQuery && msg.searchQuery !== st.query) return { added: 0, count: total() };
+
+  const now = new Date().toISOString();
+  let added = 0;
+  for (const u of msg.users || []) {
+    if (st.curCount >= st.target) break;
+    if (!u || !u.username || !(u.pk || u.id)) continue;
+    const pk = String(u.pk || u.id);
+    const key = st.query + '|' + pk;
+    if (store.searchProfiles[key]) continue;
+    store.searchProfiles[key] = {
+      pk,
+      handle: '@' + u.username,
+      name: u.full_name || null,
+      bio: u.biography || null,
+      followers: u.follower_count != null ? u.follower_count : null,
+      verified: !!u.is_verified,
+      private: !!u.text_post_app_is_private,
+      url: 'https://www.threads.com/@' + u.username,
+      searchQuery: st.query,
+      searchOrder: ++st.orderCounter,              // 1 = first account at grab time
+      capturedAt: now,
+    };
+    st.curCount++;
+    added++;
+  }
   if (msg.pageInfo && typeof msg.pageInfo.has_next_page === 'boolean') {
     st.hasNext = msg.pageInfo.has_next_page;
   }
@@ -765,6 +819,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         else if (msg.kind === 'profile') sendResponse(await handleProfileBatch(msg, sender));
         else if (msg.kind === 'liked') sendResponse(await handleLikedBatch(msg, sender));
         else if (msg.kind === 'search') sendResponse(await handleSearchBatch(msg, sender));
+        else if (msg.kind === 'search_users') sendResponse(await handleSearchUsersBatch(msg, sender));
         else sendResponse(await handleSavedBatch(msg, sender));
         break;
 
@@ -845,17 +900,20 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           feedList: store.feedList.feeds,
           search: (() => {
             const ss = store.searchState;
-            // per-query tallies for the popup's remembered-searches list
+            // per-query tallies (posts + accounts) for the remembered list
             const byQuery = {};
-            for (const p of Object.values(store.searchPosts)) {
-              const q = p.searchQuery || '?';
-              byQuery[q] = (byQuery[q] || 0) + 1;
+            for (const bucket of [store.searchPosts, store.searchProfiles]) {
+              for (const p of Object.values(bucket)) {
+                const q = p.searchQuery || '?';
+                byQuery[q] = (byQuery[q] || 0) + 1;
+              }
             }
             return {
               count: Object.keys(store.searchPosts).length,
+              profileCount: Object.keys(store.searchProfiles).length,
               running: ss.running,
               query: ss.query,
-              recent: ss.recent,
+              filter: ss.filter,
               target: ss.target,
               curCount: ss.curCount,
               hasNext: ss.hasNext,
@@ -1121,16 +1179,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: false, error: store.searchState.lastError });
           break;
         }
-        // a re-grab replaces only this query's earlier snapshot, so different
-        // searches accumulate and export together
+        // a re-grab replaces only this query's earlier snapshot (posts AND
+        // accounts), so different searches accumulate and export together
         const prefix = query + '|';
-        for (const k of Object.keys(store.searchPosts)) {
-          if (k.startsWith(prefix)) delete store.searchPosts[k];
+        for (const bucket of [store.searchPosts, store.searchProfiles]) {
+          for (const k of Object.keys(bucket)) {
+            if (k.startsWith(prefix)) delete bucket[k];
+          }
         }
         store.searchState = Object.assign({}, SEARCH_STATE_DEFAULTS, {
           running: true,
           query,
-          recent: msg.recent !== false,   // default to "Recent": it paginates chronologically
+          filter: ['recent', 'top', 'profiles'].includes(msg.filter) ? msg.filter : 'recent',
           target: Math.max(1, Math.min(2000, Number(msg.target) || 200)),
           tabId: tab.id,
         });
@@ -1326,6 +1386,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           store.likedState.stopNote = null;
         } else if (msg.mode === 'search') {
           store.searchPosts = {};
+          store.searchProfiles = {};
           store.searchState = Object.assign({}, SEARCH_STATE_DEFAULTS);
           // the remembered-searches list survives a data clear on purpose —
           // it's the user's shortcuts, not captured data

@@ -17,6 +17,11 @@
 //                    request variables: { query: "<q>", recent: 0|1, … } — the
 //                    query rides in the variables, so batches are attributed to
 //                    it there (verified live 2026-07-13)
+// Search profiles .. BarcelonaSearchUserResultsQuery  (/search?q=<q>&filter=profiles)
+//                    same searchResults connection, but node = XDTUserDict
+//                    {username, full_name, biography, follower_count,
+//                    is_verified, text_post_app_is_private, pk} — emitted as a
+//                    'search_users' batch (verified live 2026-07-13)
 // Pagination ....... <conn>.page_info.{end_cursor, has_next_page} on every connection
 // Marker ........... we match responses by CONTENT (connection key names) rather
 //                    than by doc_id / friendly name, so doc_id rotation across
@@ -85,14 +90,16 @@
   // user hit "Grab" (embedded first batch, manual pre-scrolling) are not lost.
   const replay = [];
 
-  function emit(kind, connKey, posts, pageInfo, origin, feedUrl, searchQuery) {
-    if (!posts.length && !pageInfo) return;
-    // "results" is used by other surfaces, and "searchResults" also carries
-    // the Profiles serp (user results) — only trust them when they actually
-    // contained thread posts.
-    if ((connKey === 'results' || connKey === 'searchResults') && !posts.length) return;
+  function emit(kind, connKey, posts, pageInfo, origin, feedUrl, searchQuery, users) {
+    const nUsers = users ? users.length : 0;
+    if (!posts.length && !nUsers && !pageInfo) return;
+    // "results" is used by other surfaces — only trust generic connections
+    // when they actually contained thread posts (or, for the Profiles serp,
+    // user results).
+    if ((connKey === 'results' || connKey === 'searchResults') && !posts.length && !nUsers) return;
     const msg = {
       __tse: true, type: 'TSE_BATCH', kind, connKey, posts,
+      users: users || null,
       pageInfo: pageInfo || null, origin, feedUrl: feedUrl || null,
       searchQuery: searchQuery || null,
     };
@@ -234,6 +241,16 @@
     return posts;
   }
 
+  // Profiles serp: searchResults edges whose nodes are user dicts, not threads
+  function extractUsers(conn) {
+    const users = [];
+    for (const e of conn.edges || []) {
+      const n = e && e.node;
+      if (n && n.username && (n.pk || n.id)) users.push(n);
+    }
+    return users;
+  }
+
   function hasMarker(text) {
     for (const m of MARKERS) if (text.indexOf('"' + m + '"') !== -1) return true;
     return false;
@@ -284,7 +301,16 @@
             location.pathname.replace(/\/+$/, '') === '/search') {
           try { searchQuery = (new URLSearchParams(location.search).get('q') || '').trim() || null; } catch (_) {}
         }
-        emit(CONN_KINDS[key], key, extractPosts(conn), conn.page_info, origin,
+        const posts = extractPosts(conn);
+        if (key === 'searchResults' && !posts.length) {
+          // Profiles serp: same connection, user nodes instead of threads
+          const users = extractUsers(conn);
+          if (users.length) {
+            emit('search_users', key, [], conn.page_info, origin, null, searchQuery, users);
+            continue;
+          }
+        }
+        emit(CONN_KINDS[key], key, posts, conn.page_info, origin,
           ctx && ctx.feedUrl, key === 'searchResults' ? searchQuery : null);
       }
       if (wantsFeeds) {

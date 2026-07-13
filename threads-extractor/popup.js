@@ -40,11 +40,13 @@
     // search
     searchCount: $('searchCount'), searchStatus: $('searchStatus'),
     searchBar: $('searchBar'), searchBarFill: $('searchBarFill'),
-    searchQuery: $('searchQuery'), searchTarget: $('searchTarget'), searchRecent: $('searchRecent'),
+    searchQuery: $('searchQuery'), searchTarget: $('searchTarget'), searchFilter: $('searchFilter'),
     searchDetected: $('searchDetected'),
     searchStart: $('btnSearchStart'), searchStop: $('btnSearchStop'),
     searchHistHead: $('searchHistHead'), searchHistory: $('searchHistory'),
     searchJson: $('btnSearchJson'), searchCsv: $('btnSearchCsv'), searchMd: $('btnSearchMd'),
+    searchAccHead: $('searchAccHead'), searchAccRow: $('searchAccRow'),
+    searchAccJson: $('btnSearchAccJson'), searchAccCsv: $('btnSearchAccCsv'), searchAccMd: $('btnSearchAccMd'),
     searchClear: $('btnSearchClear'),
     // storage meter
     storeRow: $('storeRow'), storeFill: $('storeFill'),
@@ -351,13 +353,15 @@
     }
 
     // ---- search pane ----
-    els.searchCount.textContent = sr.count || 0;
+    const accCount = sr.profileCount || 0;
+    els.searchCount.textContent = (sr.count || 0) + accCount;
     const hasSearch = (sr.count || 0) > 0;
     els.searchStart.disabled = busy;
     els.searchStop.disabled = !sr.running;
-    els.searchQuery.disabled = els.searchTarget.disabled = els.searchRecent.disabled = !!sr.running;
+    els.searchQuery.disabled = els.searchTarget.disabled = els.searchFilter.disabled = !!sr.running;
     els.searchJson.disabled = els.searchCsv.disabled = els.searchMd.disabled = !hasSearch;
-    els.searchClear.disabled = !hasSearch || !!sr.running;
+    els.searchAccHead.hidden = els.searchAccRow.hidden = !accCount;
+    els.searchClear.disabled = (!hasSearch && !accCount) || !!sr.running;
     els.searchBar.classList.toggle('on', !!sr.running);
     if (sr.running) {
       els.searchBarFill.style.width =
@@ -367,10 +371,12 @@
       }));
     } else if (sr.lastError) {
       setStatus(els.searchStatus, terr(sr.lastError), true);
-    } else if (hasSearch) {
-      setStatus(els.searchStatus, t('st_search_done', {
-        count: sr.count, n: Object.keys(sr.queries || {}).length,
-      }));
+    } else if (hasSearch || accCount) {
+      let done = t('st_search_done', {
+        count: sr.count || 0, n: Object.keys(sr.queries || {}).length,
+      });
+      if (accCount) done += ' · ' + t('st_search_accounts', { m: accCount });
+      setStatus(els.searchStatus, done);
     } else {
       setStatus(els.searchStatus, t('st_search_ready'));
     }
@@ -427,7 +433,8 @@
       const fill = () => {
         els.searchQuery.value = h.query;
         if (h.target) els.searchTarget.value = h.target;
-        els.searchRecent.checked = h.recent !== false;
+        // older entries stored a boolean `recent` instead of `filter`
+        els.searchFilter.value = h.filter || (h.recent === false ? 'top' : 'recent');
       };
       row.addEventListener('click', fill);
       go.addEventListener('click', async (e) => {
@@ -560,13 +567,14 @@
       const u = new URL(tab.url);
       const query = (u.searchParams.get('q') || '').trim();
       if (!query) return null;
-      return { query, recent: u.searchParams.get('filter') === 'recent' };
+      const f = u.searchParams.get('filter');
+      return { query, filter: f === 'recent' || f === 'profiles' ? f : 'top' };
     } catch (_) { return null; }
   }
 
   function applyDetectedSearch(det) {
     els.searchQuery.value = det.query;
-    els.searchRecent.checked = det.recent; // mirror the tab's serp, Top included
+    els.searchFilter.value = det.filter; // mirror the tab's serp tab exactly
   }
 
   async function offerDetectedSearch() {
@@ -588,7 +596,7 @@
     const target = Math.max(1, Math.min(2000, parseInt(els.searchTarget.value, 10) || 200));
     els.searchTarget.value = target;
     const r = await chrome.runtime.sendMessage({
-      type: 'START_SEARCH', query, target, recent: els.searchRecent.checked,
+      type: 'START_SEARCH', query, target, filter: els.searchFilter.value,
     });
     if (r && !r.ok) setStatus(els.searchStatus, terr(r.error) || t('st_could_not_start'), true);
     refresh();
@@ -597,12 +605,12 @@
     chrome.storage.local.set({
       tse_search_prefs: {
         target: parseInt(els.searchTarget.value, 10) || 200,
-        recent: els.searchRecent.checked,
+        filter: els.searchFilter.value,
       },
     });
   }
   els.searchTarget.addEventListener('change', saveSearchPrefs);
-  els.searchRecent.addEventListener('change', saveSearchPrefs);
+  els.searchFilter.addEventListener('change', saveSearchPrefs);
   els.searchStart.addEventListener('click', startSearch);
   els.searchQuery.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !els.searchStart.disabled) startSearch();
@@ -667,6 +675,13 @@
   els.searchMd.addEventListener('click', async () =>
     download(TSEExport.toMarkdown(await getPosts('tse_search_posts'), 'search'), 'text/markdown', 'threads-search', 'md'));
 
+  els.searchAccJson.addEventListener('click', async () =>
+    download(TSEExport.profilesToJSON(await getPosts('tse_search_profiles')), 'application/json', 'threads-search-accounts', 'json'));
+  els.searchAccCsv.addEventListener('click', async () =>
+    download(TSEExport.profilesToCSV(await getPosts('tse_search_profiles')), 'text/csv', 'threads-search-accounts', 'csv'));
+  els.searchAccMd.addEventListener('click', async () =>
+    download(TSEExport.profilesToMarkdown(await getPosts('tse_search_profiles')), 'text/markdown', 'threads-search-accounts', 'md'));
+
   // resolve language, restore last-used selection + target, then poll
   TSEI18n.init().then(() => {
     TSEI18n.apply();
@@ -674,7 +689,7 @@
   }).then((got) => {
     const sp = got.tse_search_prefs || {};
     if (sp.target) els.searchTarget.value = sp.target;
-    if (sp.recent === false) els.searchRecent.checked = false;
+    if (sp.filter) els.searchFilter.value = sp.filter;
     const prefs = got.tse_feed_prefs || {};
     selected = new Set(prefs.selected || []);
     if (prefs.target) els.feedTarget.value = prefs.target;
