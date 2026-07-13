@@ -1029,8 +1029,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const FIELDS = { like: 'likers', repost: 'reposters', quote: 'quoters' };
         const tabType = FIELDS[msg.tabType] ? msg.tabType : 'like';
         const tab = await findThreadsTab();
+        // errors are ERR_* codes; the dashboard translates them (err_* locale
+        // keys) so toasts follow the UI language
         if (!tab) {
-          sendResponse({ ok: false, error: 'No threads.com tab found — open threads.com first.' });
+          sendResponse({ ok: false, error: 'ERR_NO_TAB' });
           break;
         }
         let r;
@@ -1039,11 +1041,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             type: 'FETCH_ENGAGERS', postId: msg.postId, tabType,
           });
         } catch (e) {
-          sendResponse({ ok: false, error: 'Could not reach the Threads tab — reload it and try again.' });
+          // typical after the extension itself is reloaded: the old content
+          // script is orphaned, and even after a tab reload the fresh
+          // inject.js needs to observe an authenticated request (a grab
+          // produces one; plain scrolling doesn't) before it can fetch
+          sendResponse({ ok: false, error: 'ERR_TAB_UNREACHABLE' });
           break;
         }
         if (!r || !r.ok) {
-          sendResponse({ ok: false, error: (r && r.error) || 'Could not fetch that list.' });
+          // null error → dashboard falls back to its localized generic message
+          sendResponse({ ok: false, error: (r && r.error) || null });
           break;
         }
         // attach to the stored post so it persists and flows into exports

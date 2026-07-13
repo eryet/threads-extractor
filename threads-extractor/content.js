@@ -470,7 +470,7 @@
       const reqId = 'eng_' + (++engSeq);
       const engTimer = setTimeout(() => {
         const settle = pendingEngagers.get(reqId);
-        if (settle) { pendingEngagers.delete(reqId); settle({ ok: false, error: 'Timed out — keep the Threads tab loaded and try again.' }); }
+        if (settle) { pendingEngagers.delete(reqId); settle({ ok: false, error: 'ERR_TIMEOUT' }); } // code — dashboard translates
       }, 180000); // large lists page through many requests
       pendingEngagers.set(reqId, (res) => {
         clearTimeout(engTimer);

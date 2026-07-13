@@ -943,6 +943,22 @@
     },
   };
 
+  // ERR_* codes from sw.js / content.js / inject.js (which can't use
+  // chrome.i18n) → locale keys; unknown strings surface verbatim
+  const ENGAGER_ERRORS = {
+    ERR_NO_TAB: 'err_no_tab',
+    ERR_TAB_UNREACHABLE: 'err_tab_unreachable',
+    ERR_TIMEOUT: 'err_timeout',
+    ERR_NO_TEMPLATE: 'err_no_template',
+    ERR_NO_POST_ID: 'err_no_post_id',
+    ERR_REJECTED: 'err_rejected',
+    ERR_BAD_RESPONSE: 'err_bad_response',
+  };
+  function engagerError(err, K) {
+    if (!err) return t(K.failed);
+    return ENGAGER_ERRORS[err] ? t(ENGAGER_ERRORS[err]) : err;
+  }
+
   const grabbingEngagers = new Set(); // "kind|source|key" currently in flight
   async function grabEngagers(p, kind) {
     const K = ENGAGER[kind];
@@ -958,7 +974,7 @@
     } catch (_) { /* r stays null */ }
     grabbingEngagers.delete(gid);
     if (!grabbingEngagers.size) fetchBanner(null); // another grab may still be paging
-    if (!r || !r.ok) { toast((r && r.error) || t(K.failed), true); return; }
+    if (!r || !r.ok) { toast(engagerError(r && r.error, K), true); return; }
     toast(r.count ? t(K.done, { n: r.count }) : t(K.none));
     // the card's cached DOM was built without this list, and adding it doesn't
     // change the cache key — evict it so the panel actually renders

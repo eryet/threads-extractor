@@ -303,9 +303,15 @@
 
   // Issue BarcelonaFeedbackHubTabQuery for one post and page through the actors.
   async function fetchEngagers(postId, tabType) {
-    if (!gqlTemplate) throw new Error('Threads request context not ready — reload the Threads tab and try again.');
+    // Errors are ERR_* codes, translated by the dashboard (err_* locale keys) —
+    // MAIN world has no chrome.i18n, so human text can't be produced here.
+    // The template is harvested from an authenticated GraphQL request (body
+    // must carry fb_dtsg — see noteGraphqlBody), so a freshly (re)loaded page
+    // has none until one is observed. Neither reloading the tab nor plain
+    // scrolling reliably produces one — running a grab does (verified live).
+    if (!gqlTemplate) throw new Error('ERR_NO_TEMPLATE');
     const pid = String(postId || '').trim();
-    if (!/^\d+$/.test(pid)) throw new Error('This post has no numeric id to look up.');
+    if (!/^\d+$/.test(pid)) throw new Error('ERR_NO_POST_ID');
     const tab = tabType === 'repost' || tabType === 'quote' ? tabType : 'like';
     const providers = {};
     for (const k of Object.keys(ENGAGERS_PROVIDERS)) {
@@ -348,12 +354,12 @@
         json = JSON.parse(text.split('\n')[0]); // responses can stream; the first doc holds the connection
       } catch (e) {
         if (after) break; // a later page failed — keep what we already have
-        throw new Error('Threads rejected the request (its data format may have changed).');
+        throw new Error('ERR_REJECTED');
       }
       const conn = json && json.data && json.data.feedback_hub_tab_items;
       if (!conn || !Array.isArray(conn.edges)) {
         if (after) break;
-        throw new Error('Unexpected response — Threads may have changed its data format.');
+        throw new Error('ERR_BAD_RESPONSE');
       }
       for (const e of conn.edges) {
         const n = e && e.node; const a = (n && n.actor) || {};

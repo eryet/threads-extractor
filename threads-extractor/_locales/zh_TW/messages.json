@@ -332,6 +332,27 @@
   "likers_copy": {
     "message": "複製帳號"
   },
+  "err_no_tab": {
+    "message": "找不到 threads.com 分頁 — 請先開啟 threads.com。"
+  },
+  "err_tab_unreachable": {
+    "message": "無法連線到 Threads 分頁 — 請重新載入該分頁，並先執行一次抓取（例如任一動態）再重試。"
+  },
+  "err_timeout": {
+    "message": "逾時 — 請保持 Threads 分頁開啟後再試一次。"
+  },
+  "err_no_template": {
+    "message": "Threads 請求內容尚未就緒 — 請先從彈出視窗執行任一抓取（例如重新抓取動態）再試一次。"
+  },
+  "err_no_post_id": {
+    "message": "這則貼文沒有可查詢的數字 ID。"
+  },
+  "err_rejected": {
+    "message": "Threads 拒絕了這次請求（資料格式可能已變更）。"
+  },
+  "err_bad_response": {
+    "message": "非預期的回應 — Threads 的資料格式可能已變更。"
+  },
   "btn_reset_filters": {
     "message": "清除所有篩選"
   },

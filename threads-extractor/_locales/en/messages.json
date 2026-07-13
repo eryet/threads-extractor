@@ -332,6 +332,27 @@
   "likers_copy": {
     "message": "Copy handles"
   },
+  "err_no_tab": {
+    "message": "No threads.com tab found — open threads.com first."
+  },
+  "err_tab_unreachable": {
+    "message": "Could not reach the Threads tab — reload it, then run a grab (e.g. a feed) before retrying."
+  },
+  "err_timeout": {
+    "message": "Timed out — keep the Threads tab loaded and try again."
+  },
+  "err_no_template": {
+    "message": "Threads request context not ready — run any grab (e.g. re-grab a feed) from the popup first, then try again."
+  },
+  "err_no_post_id": {
+    "message": "This post has no numeric id to look up."
+  },
+  "err_rejected": {
+    "message": "Threads rejected the request (its data format may have changed)."
+  },
+  "err_bad_response": {
+    "message": "Unexpected response — Threads may have changed its data format."
+  },
   "btn_reset_filters": {
     "message": "Clear all filters"
   },
