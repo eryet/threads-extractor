@@ -5,6 +5,9 @@
 //   tse_feed_posts : { [feedUrl + '|' + id]: normalizedPost }  (feed runs)
 //   tse_feed_state : run state — see FEED_STATE_DEFAULTS
 //   tse_feed_list  : { feeds: [{name, id}], at }               (discovered custom feeds)
+//   tse_search_posts   : { [query + '|' + id]: normalizedPost }  (search grabs)
+//   tse_search_state   : run state — see SEARCH_STATE_DEFAULTS
+//   tse_search_history : [{query, recent, target, at, count}]  (remembered searches)
 importScripts('lib/normalize.js');
 
 let mem = null;              // in-memory mirror of storage
@@ -53,11 +56,29 @@ const PROFILE_STATE_DEFAULTS = {
   lastError: null,
 };
 
+const SEARCH_STATE_DEFAULTS = {
+  running: false,
+  query: null,               // the term being grabbed
+  recent: true,              // serp filter: true = "Recent" (chronological), false = "Top"
+  target: 200,               // stop after this many results
+  awaitingNav: false,
+  tabId: null,
+  orderCounter: 0,           // per grab; 1 = first result at grab time
+  curCount: 0,               // results captured in the current grab
+  hasNext: null,
+  lastProgressAt: null,
+  lastBatchAt: null,
+  lastError: null,
+};
+
+const SEARCH_HISTORY_MAX = 15;
+
 async function getStore() {
   if (!mem) {
     const got = await chrome.storage.local.get([
       'tse_posts', 'tse_state', 'tse_feed_posts', 'tse_feed_state', 'tse_feed_list',
       'tse_profile_posts', 'tse_profile_state', 'tse_liked_posts', 'tse_liked_state',
+      'tse_search_posts', 'tse_search_state', 'tse_search_history',
     ]);
     const SCROLL_STATE_DEFAULTS = {
       grabbing: false, hasNext: null, lastBatchAt: null, lastError: null, orderCounter: 0,
@@ -78,6 +99,9 @@ async function getStore() {
       feedList: got.tse_feed_list || { feeds: [], at: null },
       profilePosts: got.tse_profile_posts || {},
       profileState: Object.assign({}, PROFILE_STATE_DEFAULTS, got.tse_profile_state),
+      searchPosts: got.tse_search_posts || {},
+      searchState: Object.assign({}, SEARCH_STATE_DEFAULTS, got.tse_search_state),
+      searchHistory: Array.isArray(got.tse_search_history) ? got.tse_search_history : [],
     };
   }
   return mem;
@@ -91,6 +115,8 @@ function persist() {
       tse_feed_posts: mem.feedPosts, tse_feed_state: mem.feedState,
       tse_feed_list: mem.feedList,
       tse_profile_posts: mem.profilePosts, tse_profile_state: mem.profileState,
+      tse_search_posts: mem.searchPosts, tse_search_state: mem.searchState,
+      tse_search_history: mem.searchHistory,
     }).then(
       () => { storageFull = false; },
       () => {
@@ -114,6 +140,7 @@ function haltAllGrabs(err) {
   }
   if (mem.feedState.running) { mem.feedState.running = false; mem.feedState.lastError = err; }
   if (mem.profileState.running) { mem.profileState.running = false; mem.profileState.lastError = err; }
+  if (mem.searchState.running) { mem.searchState.running = false; mem.searchState.lastError = err; }
   chrome.tabs.query({ url: ['https://www.threads.com/*', 'https://threads.com/*'] }, (tabs) => {
     for (const tb of tabs || []) chrome.tabs.sendMessage(tb.id, { type: 'STOP_SCROLL' }).catch(() => {});
   });
@@ -141,6 +168,7 @@ function stampActiveError(err) {
   }
   if (mem.feedState.running) mem.feedState.lastError = err;
   if (mem.profileState.running) mem.profileState.lastError = err;
+  if (mem.searchState.running) mem.searchState.lastError = err;
 }
 
 function normPath(p) {
@@ -232,7 +260,7 @@ async function advanceFeed(store) {
 }
 
 function maybeClearWatchdog(store) {
-  if (!store.feedState.running && !store.profileState.running) {
+  if (!store.feedState.running && !store.profileState.running && !store.searchState.running) {
     chrome.alarms.clear(WATCHDOG).catch(() => {});
   }
 }
@@ -303,6 +331,55 @@ async function finishProfile(store) {
     chrome.tabs.sendMessage(st.tabId, { type: 'STOP_SCROLL' }).catch(() => {});
   }
   await persist();
+}
+
+// ---- search run driving (one query, one page, scroll to target) ----
+
+function searchPath(st) {
+  return '/search?q=' + encodeURIComponent(st.query) + (st.recent ? '&filter=recent' : '');
+}
+
+async function navigateToSearch(store) {
+  const st = store.searchState;
+  st.awaitingNav = true;
+  st.orderCounter = 0;
+  st.hasNext = null;
+  touchProgress(st);
+  await persist();
+  try {
+    await chrome.tabs.update(st.tabId, { url: 'https://www.threads.com' + searchPath(st) });
+  } catch (e) {
+    st.lastError = 'Lost the Threads tab mid-grab.';
+    await finishSearch(store);
+  }
+}
+
+async function finishSearch(store) {
+  const st = store.searchState;
+  const wasRunning = st.running;
+  st.running = false;
+  st.awaitingNav = false;
+  maybeClearWatchdog(store);
+  if (st.tabId != null) {
+    chrome.tabs.sendMessage(st.tabId, { type: 'STOP_SCROLL' }).catch(() => {});
+  }
+  // remembered searches: stamp the final count on this query's history entry
+  if (wasRunning && st.query) {
+    const h = store.searchHistory.find((e) => e.query === st.query);
+    if (h) h.count = st.curCount;
+  }
+  await persist();
+}
+
+// keep a small most-recent-first history of grabbed searches (one entry per
+// query — a re-grab moves it to the top and refreshes its settings)
+function rememberSearch(store, st) {
+  store.searchHistory = store.searchHistory.filter((e) => e && e.query !== st.query);
+  store.searchHistory.unshift({
+    query: st.query, recent: !!st.recent, target: st.target,
+    at: new Date().toISOString(), count: null,
+  });
+  while (store.searchHistory.length > SEARCH_HISTORY_MAX) store.searchHistory.pop();
 }
 
 // Post-limit / date-cutoff for saved & liked grabs. The feeds are ordered by
@@ -526,6 +603,52 @@ async function handleProfileBatch(msg, sender) {
   return { added, count: total() };
 }
 
+async function handleSearchBatch(msg, sender) {
+  const store = await getStore();
+  const st = store.searchState;
+  const total = () => Object.keys(store.searchPosts).length;
+  // Search capture is opt-in per run: ignore search traffic unless a run is
+  // active, from the run's tab, and past the navigation settle.
+  if (!st.running || st.awaitingNav) return { added: 0, count: total() };
+  if (sender && sender.tab && st.tabId != null && sender.tab.id !== st.tabId) {
+    return { added: 0, count: total() };
+  }
+  // the request variables name the query — drop batches for anything else
+  // (e.g. the user typing a new search into the box mid-run)
+  if (msg.searchQuery && msg.searchQuery !== st.query) return { added: 0, count: total() };
+
+  const now = new Date().toISOString();
+  let added = 0, bad = 0;
+  for (const raw of msg.posts || []) {
+    if (st.curCount >= st.target) break;
+    try {
+      const p = self.TSENormalize.normalizePost(raw, now);
+      if (!p) continue;
+      const key = st.query + '|' + p.id;
+      if (store.searchPosts[key]) continue;
+      p.searchQuery = st.query;                    // which search found it
+      p.searchRecent = !!st.recent;                // serp filter used
+      p.searchOrder = ++st.orderCounter;           // 1 = first result at grab time
+      attachReplyTo(p, raw, now);
+      store.searchPosts[key] = p;
+      st.curCount++;
+      added++;
+    } catch (e) { bad++; }
+  }
+  if (bad) logError('normalize:search', bad + ' post(s) failed to parse — skipped');
+  if (msg.pageInfo && typeof msg.pageInfo.has_next_page === 'boolean') {
+    st.hasNext = msg.pageInfo.has_next_page;
+  }
+  st.lastBatchAt = now;
+  touchProgress(st);
+  if (st.curCount >= st.target || st.hasNext === false) {
+    await finishSearch(store);                     // persists + STOP_SCROLL
+  } else {
+    await persist();
+  }
+  return { added, count: total() };
+}
+
 async function handleContentReady(msg, sender) {
   const store = await getStore();
   const st = store.feedState;
@@ -565,6 +688,18 @@ async function handleContentReady(msg, sender) {
     }
     return;
   }
+  // search run: the /search page reached? (the query lives in ?q=, which
+  // msg.path does not carry — the batch handler verifies it per batch)
+  const ss = store.searchState;
+  if (ss.running && tabId === ss.tabId) {
+    if (normPath(msg.path) === '/search') {
+      ss.awaitingNav = false;
+      touchProgress(ss);
+      await persist();
+      chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'search' }).catch(() => {});
+    }
+    return;
+  }
   // saved/liked grab resume after the /saved or /liked navigation
   if (store.state.grabbing && msg.kind === 'saved') {
     chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'saved' }).catch(() => {});
@@ -583,7 +718,8 @@ async function watchdogTick(alarm) {
   const store = await getStore();
   const st = store.feedState;
   const ps = store.profileState;
-  if (!st.running && !ps.running) { chrome.alarms.clear(WATCHDOG).catch(() => {}); return; }
+  const ss = store.searchState;
+  if (!st.running && !ps.running && !ss.running) { chrome.alarms.clear(WATCHDOG).catch(() => {}); return; }
   if (st.running) {
     const last = Date.parse(st.lastProgressAt || '') || 0;
     if (Date.now() - last > STALL_MS) {
@@ -611,6 +747,13 @@ async function watchdogTick(alarm) {
       await advanceProfile(store);
     }
   }
+  if (ss.running) {
+    const last = Date.parse(ss.lastProgressAt || '') || 0;
+    if (Date.now() - last > STALL_MS) {
+      ss.lastError = 'search stalled — stopped (keep the tab visible)';
+      await finishSearch(store);
+    }
+  }
 }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -621,6 +764,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         if (msg.kind === 'feed') sendResponse(await handleFeedBatch(msg, sender));
         else if (msg.kind === 'profile') sendResponse(await handleProfileBatch(msg, sender));
         else if (msg.kind === 'liked') sendResponse(await handleLikedBatch(msg, sender));
+        else if (msg.kind === 'search') sendResponse(await handleSearchBatch(msg, sender));
         else sendResponse(await handleSavedBatch(msg, sender));
         break;
 
@@ -699,6 +843,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             lastError: st.lastError,
           },
           feedList: store.feedList.feeds,
+          search: (() => {
+            const ss = store.searchState;
+            // per-query tallies for the popup's remembered-searches list
+            const byQuery = {};
+            for (const p of Object.values(store.searchPosts)) {
+              const q = p.searchQuery || '?';
+              byQuery[q] = (byQuery[q] || 0) + 1;
+            }
+            return {
+              count: Object.keys(store.searchPosts).length,
+              running: ss.running,
+              query: ss.query,
+              recent: ss.recent,
+              target: ss.target,
+              curCount: ss.curCount,
+              hasNext: ss.hasNext,
+              queries: byQuery,
+              history: store.searchHistory,
+              lastError: ss.lastError,
+            };
+          })(),
           profile: (() => {
             const ps = store.profileState;
             // summarize what's stored: handle -> {threads, replies}
@@ -744,6 +909,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         (liked ? store.state : store.likedState).grabbing = false; // modes share one scroll loop
         store.feedState.running = false;
         store.profileState.running = false;
+        store.searchState.running = false;
         await persist();
         try {
           await chrome.tabs.sendMessage(tab.id, { type: 'START_SCROLL', mode: liked ? 'liked' : 'saved' });
@@ -783,6 +949,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         store.state.grabbing = false; // modes share one scroll loop
         store.likedState.grabbing = false;
         store.profileState.running = false;
+        store.searchState.running = false;
         chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
         await navigateToCurrent(store); // persists
         sendResponse({ ok: true });
@@ -825,6 +992,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         store.state.grabbing = false; // modes share one scroll loop
         store.likedState.grabbing = false;
         store.profileState.running = false;
+        store.searchState.running = false;
         chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
         let onBoard = false;
         try { onBoard = normPath(new URL(tab.url || '').pathname) === '/'; } catch (_) {}
@@ -933,8 +1101,46 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         store.state.grabbing = false;      // modes share one scroll loop
         store.likedState.grabbing = false;
         store.feedState.running = false;
+        store.searchState.running = false;
         chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
         await navigateToProfileStage(store); // persists
+        sendResponse({ ok: true });
+        break;
+      }
+
+      case 'START_SEARCH': {
+        const query = String(msg.query || '').trim();
+        if (!query) {
+          sendResponse({ ok: false, error: 'No search query.' });
+          break;
+        }
+        const tab = await findThreadsTab();
+        if (!tab) {
+          store.searchState.lastError = 'No threads.com tab found — open threads.com first.';
+          await persist();
+          sendResponse({ ok: false, error: store.searchState.lastError });
+          break;
+        }
+        // a re-grab replaces only this query's earlier snapshot, so different
+        // searches accumulate and export together
+        const prefix = query + '|';
+        for (const k of Object.keys(store.searchPosts)) {
+          if (k.startsWith(prefix)) delete store.searchPosts[k];
+        }
+        store.searchState = Object.assign({}, SEARCH_STATE_DEFAULTS, {
+          running: true,
+          query,
+          recent: msg.recent !== false,   // default to "Recent": it paginates chronologically
+          target: Math.max(1, Math.min(2000, Number(msg.target) || 200)),
+          tabId: tab.id,
+        });
+        rememberSearch(store, store.searchState);
+        store.state.grabbing = false;      // modes share one scroll loop
+        store.likedState.grabbing = false;
+        store.feedState.running = false;
+        store.profileState.running = false;
+        chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
+        await navigateToSearch(store); // persists
         sendResponse({ ok: true });
         break;
       }
@@ -944,6 +1150,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           await finishRun(store);
         } else if (msg.mode === 'profile') {
           await finishProfile(store);
+        } else if (msg.mode === 'search') {
+          await finishSearch(store);
         } else {
           if (msg.mode === 'liked') store.likedState.grabbing = false;
           else store.state.grabbing = false;
@@ -984,6 +1192,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 sender && sender.tab && sender.tab.id === store.profileState.tabId) {
               await advanceProfile(store);
             }
+          } else if (msg.mode === 'search') {
+            if (store.searchState.running && !store.searchState.awaitingNav && msg.state === 'done' &&
+                sender && sender.tab && sender.tab.id === store.searchState.tabId) {
+              await finishSearch(store);
+            }
           } else if (msg.mode === 'liked') {
             store.likedState.grabbing = false;
             await persist();
@@ -1011,6 +1224,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             const key = 'import:' + p.feed + '|' + p.id;
             if (store.feedPosts[key]) { skipped++; continue; }
             store.feedPosts[key] = p;
+          } else if (p.searchQuery) {
+            const key = p.searchQuery + '|' + p.id;
+            if (store.searchPosts[key]) { skipped++; continue; }
+            store.searchPosts[key] = p;
           } else if (p.likedOrder != null) {
             if (store.likedPosts[p.id]) { skipped++; continue; }
             store.likedPosts[p.id] = p;
@@ -1057,6 +1274,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         const buckets = {
           saved: store.posts, liked: store.likedPosts,
           feed: store.feedPosts, profile: store.profilePosts,
+          search: store.searchPosts,
         };
         const field = FIELDS[tabType];
         const bucket = buckets[msg.source];
@@ -1077,6 +1295,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           liked: store.likedPosts,
           feed: store.feedPosts,
           profile: store.profilePosts,
+          search: store.searchPosts,
         };
         let removed = 0;
         for (const [src, keys] of Object.entries(msg.keys || {})) {
@@ -1105,6 +1324,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           store.likedState.lastBatchAt = null;
           store.likedState.lastError = null;
           store.likedState.stopNote = null;
+        } else if (msg.mode === 'search') {
+          store.searchPosts = {};
+          store.searchState = Object.assign({}, SEARCH_STATE_DEFAULTS);
+          // the remembered-searches list survives a data clear on purpose —
+          // it's the user's shortcuts, not captured data
         } else {
           store.posts = {};
           store.state.orderCounter = 0;

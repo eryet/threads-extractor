@@ -362,6 +362,57 @@
   "err_bad_response": {
     "message": "Unexpected response — Threads may have changed its data format."
   },
+  "tab_search": {
+    "message": "Search"
+  },
+  "lbl_search_captured": {
+    "message": "search results captured"
+  },
+  "ph_search_terms": {
+    "message": "search terms"
+  },
+  "lbl_search_target": {
+    "message": "Max results"
+  },
+  "lbl_search_recent": {
+    "message": "“Recent” filter (newest first)"
+  },
+  "btn_grab_search": {
+    "message": "Grab search results"
+  },
+  "btn_clear_search": {
+    "message": "Clear search data"
+  },
+  "hint_search": {
+    "message": "runs the search in your Threads tab and captures results while it scrolls · re-grabbing a query replaces its earlier snapshot · keep the tab visible"
+  },
+  "pick_search_history": {
+    "message": "Remembered searches"
+  },
+  "hist_rerun": {
+    "message": "Grab this search again"
+  },
+  "st_search_progress": {
+    "message": "“{q}” — {cur} / {target}"
+  },
+  "st_search_done": {
+    "message": "{count} result(s) across {n} search(es)"
+  },
+  "st_search_ready": {
+    "message": "type a search, then grab"
+  },
+  "banner_search": {
+    "message": "grabbing search results"
+  },
+  "nav_search": {
+    "message": "Search"
+  },
+  "sec_search": {
+    "message": "Search"
+  },
+  "live_search": {
+    "message": "grabbing search “{q}”…"
+  },
   "btn_reset_filters": {
     "message": "Clear all filters"
   },

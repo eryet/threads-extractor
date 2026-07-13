@@ -7,9 +7,9 @@
   const terr = (s) => TSEI18n.translateError(s);
   const els = {
     liveDot: $('liveDot'),
-    tabSaved: $('tabSaved'), tabLiked: $('tabLiked'), tabFeeds: $('tabFeeds'), tabProfile: $('tabProfile'),
-    badgeSaved: $('badgeSaved'), badgeLiked: $('badgeLiked'), badgeFeeds: $('badgeFeeds'), badgeProfile: $('badgeProfile'),
-    paneSaved: $('paneSaved'), paneLiked: $('paneLiked'), paneFeeds: $('paneFeeds'), paneProfile: $('paneProfile'),
+    tabSaved: $('tabSaved'), tabLiked: $('tabLiked'), tabFeeds: $('tabFeeds'), tabProfile: $('tabProfile'), tabSearch: $('tabSearch'),
+    badgeSaved: $('badgeSaved'), badgeLiked: $('badgeLiked'), badgeFeeds: $('badgeFeeds'), badgeProfile: $('badgeProfile'), badgeSearch: $('badgeSearch'),
+    paneSaved: $('paneSaved'), paneLiked: $('paneLiked'), paneFeeds: $('paneFeeds'), paneProfile: $('paneProfile'), paneSearch: $('paneSearch'),
     // saved
     count: $('count'), status: $('status'), savedBar: $('savedBar'),
     savedLimit: $('savedLimit'), savedUntil: $('savedUntil'),
@@ -37,6 +37,14 @@
     profThreads: $('btnProfThreads'), profReplies: $('btnProfReplies'), profStop: $('btnProfStop'),
     profJson: $('btnProfJson'), profCsv: $('btnProfCsv'), profMd: $('btnProfMd'),
     profClear: $('btnProfClear'),
+    // search
+    searchCount: $('searchCount'), searchStatus: $('searchStatus'),
+    searchBar: $('searchBar'), searchBarFill: $('searchBarFill'),
+    searchQuery: $('searchQuery'), searchTarget: $('searchTarget'), searchRecent: $('searchRecent'),
+    searchStart: $('btnSearchStart'), searchStop: $('btnSearchStop'),
+    searchHistHead: $('searchHistHead'), searchHistory: $('searchHistory'),
+    searchJson: $('btnSearchJson'), searchCsv: $('btnSearchCsv'), searchMd: $('btnSearchMd'),
+    searchClear: $('btnSearchClear'),
     // storage meter
     storeRow: $('storeRow'), storeFill: $('storeFill'),
     storeTxt: $('storeTxt'), storeHint: $('storeHint'),
@@ -56,15 +64,17 @@
 
   // ---- tabs ----
   function showTab(which) {
-    if (!['saved', 'liked', 'feeds', 'profile'].includes(which)) which = 'feeds';
+    if (!['saved', 'liked', 'feeds', 'profile', 'search'].includes(which)) which = 'feeds';
     els.tabSaved.classList.toggle('active', which === 'saved');
     els.tabLiked.classList.toggle('active', which === 'liked');
     els.tabFeeds.classList.toggle('active', which === 'feeds');
     els.tabProfile.classList.toggle('active', which === 'profile');
+    els.tabSearch.classList.toggle('active', which === 'search');
     els.paneSaved.classList.toggle('active', which === 'saved');
     els.paneLiked.classList.toggle('active', which === 'liked');
     els.paneFeeds.classList.toggle('active', which === 'feeds');
     els.paneProfile.classList.toggle('active', which === 'profile');
+    els.paneSearch.classList.toggle('active', which === 'search');
     try { localStorage.setItem('tse_tab', which); } catch (_) {}
   }
   $('btnDash').addEventListener('click', () => {
@@ -76,6 +86,7 @@
   els.tabLiked.addEventListener('click', () => showTab('liked'));
   els.tabFeeds.addEventListener('click', () => showTab('feeds'));
   els.tabProfile.addEventListener('click', () => showTab('profile'));
+  els.tabSearch.addEventListener('click', () => showTab('search'));
   showTab((() => { try { return localStorage.getItem('tse_tab') || 'feeds'; } catch (_) { return 'feeds'; } })());
 
   function setStatus(el, text, isError) {
@@ -193,7 +204,8 @@
     const f = (lastState && lastState.feed) || {};
     const p = (lastState && lastState.profile) || {};
     const lk = (lastState && lastState.liked) || {};
-    const busy = !!f.running || !!s.grabbing || !!lk.grabbing || !!p.running;
+    const sr = (lastState && lastState.search) || {};
+    const busy = !!f.running || !!s.grabbing || !!lk.grabbing || !!p.running || !!sr.running;
     els.feedStart.disabled = busy || selected.size === 0;
     els.colsStart.disabled = busy || selected.size === 0;
   }
@@ -204,7 +216,8 @@
     const lk = state.liked || {};
     const f = state.feed || {};
     const p = state.profile || {};
-    const busy = !!s.grabbing || !!lk.grabbing || !!f.running || !!p.running;
+    const sr = state.search || {};
+    const busy = !!s.grabbing || !!lk.grabbing || !!f.running || !!p.running || !!sr.running;
 
     els.liveDot.classList.toggle('live', busy);
     // compact so a big capture can't stretch its tab (12345 -> 12.3k)
@@ -213,12 +226,14 @@
     els.badgeLiked.textContent = fmtB(lk.count || 0);
     els.badgeFeeds.textContent = fmtB(f.count || 0);
     els.badgeProfile.textContent = fmtB(p.count || 0);
+    els.badgeSearch.textContent = fmtB(sr.count || 0);
 
     // first poll: jump to whichever tab is busy so progress is visible
     if (!tabbedOnce) {
       tabbedOnce = true;
       if (f.running) showTab('feeds');
       else if (p.running) showTab('profile');
+      else if (sr.running) showTab('search');
       else if (lk.grabbing) showTab('liked');
       else if (s.grabbing) showTab('saved');
     }
@@ -334,6 +349,32 @@
       setStatus(els.feedStatus, t('st_select_feeds'));
     }
 
+    // ---- search pane ----
+    els.searchCount.textContent = sr.count || 0;
+    const hasSearch = (sr.count || 0) > 0;
+    els.searchStart.disabled = busy;
+    els.searchStop.disabled = !sr.running;
+    els.searchQuery.disabled = els.searchTarget.disabled = els.searchRecent.disabled = !!sr.running;
+    els.searchJson.disabled = els.searchCsv.disabled = els.searchMd.disabled = !hasSearch;
+    els.searchClear.disabled = !hasSearch || !!sr.running;
+    els.searchBar.classList.toggle('on', !!sr.running);
+    if (sr.running) {
+      els.searchBarFill.style.width =
+        Math.round(Math.min(1, (sr.curCount || 0) / (sr.target || 1)) * 100) + '%';
+      setStatus(els.searchStatus, t('st_search_progress', {
+        q: sr.query || '…', cur: sr.curCount || 0, target: sr.target || 0,
+      }));
+    } else if (sr.lastError) {
+      setStatus(els.searchStatus, terr(sr.lastError), true);
+    } else if (hasSearch) {
+      setStatus(els.searchStatus, t('st_search_done', {
+        count: sr.count, n: Object.keys(sr.queries || {}).length,
+      }));
+    } else {
+      setStatus(els.searchStatus, t('st_search_ready'));
+    }
+    renderSearchHistory(sr, busy);
+
     // ---- storage meter ----
     const sg = state.storage || {};
     if (sg.quota) {
@@ -350,6 +391,50 @@
       });
       els.storeHint.hidden = !(warn || full);
       if (warn || full) els.storeHint.textContent = t(full ? 'storage_full' : 'storage_low');
+    }
+  }
+
+  // ---- remembered searches (history rows: click fills the form, ▶ re-runs) ----
+  let renderedHistKey = null;
+  function renderSearchHistory(sr, busy) {
+    const hist = sr.history || [];
+    els.searchHistHead.hidden = els.searchHistory.hidden = !hist.length;
+    if (!hist.length) return;
+    // stored counts can change (grab finishing, clears) — include them in the key
+    const counts = sr.queries || {};
+    const key = hist.map((h) => h.query + '|' + (counts[h.query] || 0)).join('\n') + '|' + busy;
+    if (key === renderedHistKey) return;
+    renderedHistKey = key;
+    els.searchHistory.textContent = '';
+    for (const h of hist) {
+      const row = document.createElement('div');
+      row.className = 'histItem';
+      const q = document.createElement('span');
+      q.className = 'hq';
+      q.textContent = h.query;
+      q.title = h.query;
+      const meta = document.createElement('span');
+      meta.className = 'hmeta';
+      const n = counts[h.query];
+      meta.textContent = n ? String(n) : '';
+      const go = document.createElement('button');
+      go.className = 'hgo';
+      go.textContent = '▶';
+      go.title = t('hist_rerun');
+      go.disabled = busy;
+      row.append(q, meta, go);
+      const fill = () => {
+        els.searchQuery.value = h.query;
+        if (h.target) els.searchTarget.value = h.target;
+        els.searchRecent.checked = h.recent !== false;
+      };
+      row.addEventListener('click', fill);
+      go.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        fill();
+        await startSearch();
+      });
+      els.searchHistory.appendChild(row);
     }
   }
 
@@ -460,6 +545,45 @@
     refresh();
   });
 
+  // ---- search controls ----
+  async function startSearch() {
+    const query = els.searchQuery.value.trim();
+    if (!query) {
+      setStatus(els.searchStatus, t('st_search_ready'), true);
+      els.searchQuery.focus();
+      return;
+    }
+    const target = Math.max(1, Math.min(2000, parseInt(els.searchTarget.value, 10) || 200));
+    els.searchTarget.value = target;
+    const r = await chrome.runtime.sendMessage({
+      type: 'START_SEARCH', query, target, recent: els.searchRecent.checked,
+    });
+    if (r && !r.ok) setStatus(els.searchStatus, terr(r.error) || t('st_could_not_start'), true);
+    refresh();
+  }
+  function saveSearchPrefs() {
+    chrome.storage.local.set({
+      tse_search_prefs: {
+        target: parseInt(els.searchTarget.value, 10) || 200,
+        recent: els.searchRecent.checked,
+      },
+    });
+  }
+  els.searchTarget.addEventListener('change', saveSearchPrefs);
+  els.searchRecent.addEventListener('change', saveSearchPrefs);
+  els.searchStart.addEventListener('click', startSearch);
+  els.searchQuery.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !els.searchStart.disabled) startSearch();
+  });
+  els.searchStop.addEventListener('click', async () => {
+    await chrome.runtime.sendMessage({ type: 'STOP', mode: 'search' });
+    refresh();
+  });
+  els.searchClear.addEventListener('click', async () => {
+    await chrome.runtime.sendMessage({ type: 'CLEAR', mode: 'search' });
+    refresh();
+  });
+
   // ---- exports ----
   async function getPosts(storageKey) {
     const got = await chrome.storage.local.get(storageKey);
@@ -504,11 +628,21 @@
   els.profMd.addEventListener('click', async () =>
     download(TSEExport.toMarkdown(await getPosts('tse_profile_posts'), 'profile'), 'text/markdown', 'threads-profile', 'md'));
 
+  els.searchJson.addEventListener('click', async () =>
+    download(TSEExport.toJSON(await getPosts('tse_search_posts')), 'application/json', 'threads-search', 'json'));
+  els.searchCsv.addEventListener('click', async () =>
+    download(TSEExport.toCSV(await getPosts('tse_search_posts'), 'search'), 'text/csv', 'threads-search', 'csv'));
+  els.searchMd.addEventListener('click', async () =>
+    download(TSEExport.toMarkdown(await getPosts('tse_search_posts'), 'search'), 'text/markdown', 'threads-search', 'md'));
+
   // resolve language, restore last-used selection + target, then poll
   TSEI18n.init().then(() => {
     TSEI18n.apply();
-    return chrome.storage.local.get(['tse_feed_prefs', 'tse_grab_prefs']);
+    return chrome.storage.local.get(['tse_feed_prefs', 'tse_grab_prefs', 'tse_search_prefs']);
   }).then((got) => {
+    const sp = got.tse_search_prefs || {};
+    if (sp.target) els.searchTarget.value = sp.target;
+    if (sp.recent === false) els.searchRecent.checked = false;
     const prefs = got.tse_feed_prefs || {};
     selected = new Set(prefs.selected || []);
     if (prefs.target) els.feedTarget.value = prefs.target;

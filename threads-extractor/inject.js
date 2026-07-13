@@ -12,6 +12,11 @@
 //                    (some edges are non-post units, e.g. node.suggested_users)
 // Custom feed ...... BarcelonaCustomFeedRefetchableQuery  (page: /custom_feed/<id>/)
 //                    data...results.edges[].node.thread_items[].post
+// Search ........... BarcelonaSearchResultsQuery  (page: /search?q=<q>[&filter=recent])
+//                    data...searchResults.edges[].node.thread.thread_items[].post
+//                    request variables: { query: "<q>", recent: 0|1, … } — the
+//                    query rides in the variables, so batches are attributed to
+//                    it there (verified live 2026-07-13)
 // Pagination ....... <conn>.page_info.{end_cursor, has_next_page} on every connection
 // Marker ........... we match responses by CONTENT (connection key names) rather
 //                    than by doc_id / friendly name, so doc_id rotation across
@@ -38,7 +43,7 @@
   // mediaData = profile content (Threads AND Replies tabs share it; also fires
   // on other people's profiles — the service worker filters by username)
   // liked_media = /liked (verified 2026-07-06: same shape as saved_media)
-  const CONN_KINDS = { saved_media: 'saved', liked_media: 'liked', feedData: 'feed', results: 'feed', mediaData: 'profile' };
+  const CONN_KINDS = { saved_media: 'saved', liked_media: 'liked', feedData: 'feed', results: 'feed', mediaData: 'profile', searchResults: 'search' };
   const MARKERS = Object.keys(CONN_KINDS);
 
   // ---- Post engagers: who liked / reposted / quoted a post ----
@@ -80,21 +85,23 @@
   // user hit "Grab" (embedded first batch, manual pre-scrolling) are not lost.
   const replay = [];
 
-  function emit(kind, connKey, posts, pageInfo, origin, feedUrl) {
+  function emit(kind, connKey, posts, pageInfo, origin, feedUrl, searchQuery) {
     if (!posts.length && !pageInfo) return;
-    // "results" is used by other surfaces (search, …) — only trust it when it
-    // actually contained thread posts.
-    if (connKey === 'results' && !posts.length) return;
+    // "results" is used by other surfaces, and "searchResults" also carries
+    // the Profiles serp (user results) — only trust them when they actually
+    // contained thread posts.
+    if ((connKey === 'results' || connKey === 'searchResults') && !posts.length) return;
     const msg = {
       __tse: true, type: 'TSE_BATCH', kind, connKey, posts,
       pageInfo: pageInfo || null, origin, feedUrl: feedUrl || null,
+      searchQuery: searchQuery || null,
     };
     replay.push(msg);
     if (replay.length > 300) replay.shift();
     window.postMessage(msg, window.location.origin);
   }
 
-  // ---- feed attribution from GraphQL request variables ----
+  // ---- feed / search attribution from GraphQL request variables ----
   function feedUrlFromVars(v) {
     if (!v || typeof v !== 'object') return null;
     const cid = v.interest_feed_id || v.custom_feed_id;
@@ -103,18 +110,28 @@
     return null;
   }
 
-  function feedUrlFromBody(body) {
+  // search requests carry the term as variables.query (verified live 2026-07-13)
+  function searchQueryFromVars(v) {
+    if (!v || typeof v !== 'object') return null;
+    return typeof v.query === 'string' && v.query.trim() ? v.query.trim() : null;
+  }
+
+  function reqCtxFromBody(body) {
     try {
       if (body instanceof URLSearchParams) body = body.toString();
       if (typeof body !== 'string' || body.indexOf('variables=') === -1) return null;
       const raw = new URLSearchParams(body).get('variables');
-      return raw ? feedUrlFromVars(JSON.parse(raw)) : null;
+      if (!raw) return null;
+      const v = JSON.parse(raw);
+      const feedUrl = feedUrlFromVars(v);
+      const searchQuery = searchQueryFromVars(v);
+      return feedUrl || searchQuery ? { feedUrl, searchQuery } : null;
     } catch (_) { return null; }
   }
 
-  // adp_<label> -> feed url, filled from embedded preloader registrations so
-  // embedded first batches can be attributed like fetched ones
-  const preloaderFeeds = {};
+  // adp_<label> -> {feedUrl, searchQuery}, filled from embedded preloader
+  // registrations so embedded first batches can be attributed like fetched ones
+  const preloaderCtx = {};
 
   function harvestPreloaderVars(text) {
     const re = /"(adp_[A-Za-z0-9_]+)","queryID":"[^"]*","variables":/g;
@@ -129,43 +146,48 @@
       }
       if (end === -1) continue;
       try {
-        const fu = feedUrlFromVars(JSON.parse(text.slice(start, end + 1)));
-        if (fu) preloaderFeeds[m[1]] = fu;
+        const v = JSON.parse(text.slice(start, end + 1));
+        const fu = feedUrlFromVars(v);
+        const sq = searchQueryFromVars(v);
+        if (fu || sq) preloaderCtx[m[1]] = { feedUrl: fu, searchQuery: sq };
       } catch (_) {}
     }
   }
 
-  // thread items live at node.thread_items (saved_media, results) or
-  // node.text_post_app_thread.thread_items (feedData)
+  // thread items live at node.thread_items (saved_media, results),
+  // node.text_post_app_thread.thread_items (feedData), or
+  // node.thread.thread_items (searchResults)
   function threadItemsOf(node) {
     if (!node || typeof node !== 'object') return null;
     if (Array.isArray(node.thread_items)) return node.thread_items;
     const t = node.text_post_app_thread;
     if (t && Array.isArray(t.thread_items)) return t.thread_items;
+    const th = node.thread;
+    if (th && Array.isArray(th.thread_items)) return th.thread_items;
     return null;
   }
 
   // Recursively collect every known {<marker>: {edges, page_info}} connection
-  // in a JSON tree. feedUrl context: the whole tree's (a fetched response,
-  // from its request variables), or per-subtree via adp_ preloader labels
-  // (embedded payloads).
-  function findConnections(root, defaultFeedUrl) {
+  // in a JSON tree. ctx = {feedUrl, searchQuery} attribution: the whole tree's
+  // (a fetched response, from its request variables), or per-subtree via adp_
+  // preloader labels (embedded payloads).
+  function findConnections(root, defaultCtx) {
     const found = [];
     const seen = new Set();
-    (function walk(o, feedUrl) {
+    (function walk(o, ctx) {
       if (!o || typeof o !== 'object' || seen.has(o)) return;
       seen.add(o);
       if (Array.isArray(o) && typeof o[0] === 'string' && o[0].indexOf('adp_') === 0 &&
-          preloaderFeeds[o[0]]) {
-        feedUrl = preloaderFeeds[o[0]];
+          preloaderCtx[o[0]]) {
+        ctx = preloaderCtx[o[0]];
       }
       for (const key of MARKERS) {
         const c = o[key];
-        if (c && typeof c === 'object' && Array.isArray(c.edges)) found.push({ key, conn: c, feedUrl });
+        if (c && typeof c === 'object' && Array.isArray(c.edges)) found.push({ key, conn: c, ctx });
       }
       const vals = Array.isArray(o) ? o : Object.values(o);
-      for (const v of vals) walk(v, feedUrl);
-    })(root, defaultFeedUrl || null);
+      for (const v of vals) walk(v, ctx);
+    })(root, defaultCtx || null);
     return found;
   }
 
@@ -238,7 +260,7 @@
     return feeds;
   }
 
-  function handleJsonText(text, origin, requestFeedUrl) {
+  function handleJsonText(text, origin, requestCtx) {
     if (!text) return;
     const wantsFeeds = text.indexOf('"custom_feeds"') !== -1;
     const wantsColumns = text.indexOf('text_app_default_board_new') !== -1;
@@ -254,8 +276,16 @@
       }
     }
     for (const j of chunks) {
-      for (const { key, conn, feedUrl } of findConnections(j, requestFeedUrl)) {
-        emit(CONN_KINDS[key], key, extractPosts(conn), conn.page_info, origin, feedUrl);
+      for (const { key, conn, ctx } of findConnections(j, requestCtx)) {
+        let searchQuery = (ctx && ctx.searchQuery) || null;
+        // embedded search batches whose preloader registration was missed:
+        // the page's own ?q= names the query
+        if (key === 'searchResults' && !searchQuery &&
+            location.pathname.replace(/\/+$/, '') === '/search') {
+          try { searchQuery = (new URLSearchParams(location.search).get('q') || '').trim() || null; } catch (_) {}
+        }
+        emit(CONN_KINDS[key], key, extractPosts(conn), conn.page_info, origin,
+          ctx && ctx.feedUrl, key === 'searchResults' ? searchQuery : null);
       }
       if (wantsFeeds) {
         const feeds = findFeedList(j);
@@ -404,10 +434,10 @@
       const url = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
       if (url.includes('/graphql')) {
         noteGraphqlBody(url, headersToObject(args[1] && args[1].headers), args[1] && args[1].body);
-        const feedUrl = feedUrlFromBody(args[1] && args[1].body);
+        const ctx = reqCtxFromBody(args[1] && args[1].body);
         p.then((resp) => {
           try {
-            resp.clone().text().then((t) => handleJsonText(t, 'fetch', feedUrl)).catch(() => {});
+            resp.clone().text().then((t) => handleJsonText(t, 'fetch', ctx)).catch(() => {});
           } catch (_) {}
         }).catch(() => {});
       }
@@ -431,11 +461,11 @@
   XMLHttpRequest.prototype.send = function (body) {
     if (this.__tseUrl && this.__tseUrl.includes('/graphql')) {
       noteGraphqlBody(this.__tseUrl, this.__tseHeaders || {}, body);
-      const feedUrl = feedUrlFromBody(body);
+      const ctx = reqCtxFromBody(body);
       this.addEventListener('load', () => {
         try {
           if (this.responseType === '' || this.responseType === 'text') {
-            handleJsonText(this.responseText, 'xhr', feedUrl);
+            handleJsonText(this.responseText, 'xhr', ctx);
           }
         } catch (_) {}
       });

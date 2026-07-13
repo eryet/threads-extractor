@@ -469,6 +469,7 @@
     .badge.liked { color: #ff9ab0; background: rgba(255, 105, 140, 0.13); }
     .badge.feed { color: #bff3d4; background: rgba(61, 220, 132, 0.13); }
     .badge.profile { color: #ffd699; background: rgba(255, 178, 74, 0.13); }
+    .badge.search { color: #d8b4fe; background: rgba(168, 85, 247, 0.13); }
     /* badge + date directly under the author line, like Threads */
     .card .sub {
       display: flex; align-items: center; gap: 8px;
@@ -676,6 +677,11 @@
     <details class="sideSec" data-sec="feed" id="feedFacet" open hidden>
       <summary class="secHead"><span data-i18n="sec_feed">Feed</span> <a id="feedFacetClear" data-i18n="link_clear" hidden>clear</a></summary>
       <div class="chipWrap" id="feedChips"></div>
+    </details>
+
+    <details class="sideSec" data-sec="search" id="searchFacet" open hidden>
+      <summary class="secHead"><span data-i18n="sec_search">Search</span> <a id="searchFacetClear" data-i18n="link_clear" hidden>clear</a></summary>
+      <div class="chipWrap" id="searchChips"></div>
     </details>
 
     <details class="sideSec" data-sec="profile" id="profFacet" open hidden>

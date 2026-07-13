@@ -15,6 +15,7 @@
     // facet filters are multi-select: OR within a facet, AND across facets;
     // an empty set means "no filter"
     feeds: new Set(),        // feed names
+    queries: new Set(),      // search queries
     handles: new Set(),      // profile handles ('@x')
     sections: new Set(),     // 'threads' | 'replies'
     authors: new Set(),      // author handles ('@x')
@@ -32,51 +33,58 @@
     liked: { labelKey: 'nav_liked', order: 1 },
     feed: { labelKey: 'nav_feeds', order: 2 },
     profile: { labelKey: 'nav_profiles', order: 3 },
+    search: { labelKey: 'nav_search', order: 4 },
   };
 
   // ---- data ----
 
   async function loadPosts() {
-    const got = await chrome.storage.local.get(['tse_posts', 'tse_liked_posts', 'tse_feed_posts', 'tse_profile_posts']);
+    const got = await chrome.storage.local.get(['tse_posts', 'tse_liked_posts', 'tse_feed_posts', 'tse_profile_posts', 'tse_search_posts']);
     // _key = the post's storage key, so "delete shown" can address it exactly
     const tag = (obj, src) =>
       Object.entries(obj || {}).map(([k, p]) => Object.assign({}, p, { _source: src, _key: k }));
     all = tag(got.tse_posts, 'saved')
       .concat(tag(got.tse_liked_posts, 'liked'))
       .concat(tag(got.tse_feed_posts, 'feed'))
-      .concat(tag(got.tse_profile_posts, 'profile'));
+      .concat(tag(got.tse_profile_posts, 'profile'))
+      .concat(tag(got.tse_search_posts, 'search'));
 
     // drop filter selections whose data is gone (deleted / cleared), so the
     // view doesn't strand the user on an empty result
-    const feedsNow = new Set(), handlesNow = new Set(), authorsNow = new Set();
+    const feedsNow = new Set(), queriesNow = new Set(), handlesNow = new Set(), authorsNow = new Set();
     for (const p of all) {
       if (p.feed) feedsNow.add(p.feed);
+      if (p.searchQuery) queriesNow.add(p.searchQuery);
       if (p.profileHandle) handlesNow.add(p.profileHandle);
       if (p.author && p.author.handle) authorsNow.add(p.author.handle);
     }
     for (const f of [...state.feeds]) if (!feedsNow.has(f)) state.feeds.delete(f);
+    for (const q of [...state.queries]) if (!queriesNow.has(q)) state.queries.delete(q);
     for (const h of [...state.handles]) if (!handlesNow.has(h)) state.handles.delete(h);
     for (const a of [...state.authors]) if (!authorsNow.has(a)) state.authors.delete(a);
     if (state.source !== 'all' && !all.some((p) => p._source === state.source)) state.source = 'all';
   }
 
   async function loadLive() {
-    const got = await chrome.storage.local.get(['tse_state', 'tse_liked_state', 'tse_feed_state', 'tse_profile_state']);
+    const got = await chrome.storage.local.get(['tse_state', 'tse_liked_state', 'tse_feed_state', 'tse_profile_state', 'tse_search_state']);
     const s = got.tse_state || {};
     const lk = got.tse_liked_state || {};
     const f = got.tse_feed_state || {};
     const p = got.tse_profile_state || {};
-    const busy = !!s.grabbing || !!lk.grabbing || !!f.running || !!p.running;
+    const sr = got.tse_search_state || {};
+    const busy = !!s.grabbing || !!lk.grabbing || !!f.running || !!p.running || !!sr.running;
     $('liveDot').classList.toggle('live', busy);
     $('liveText').textContent = f.running
       ? t('live_feeds', { p: (f.queue || []).length ? (f.index || 0) + 1 + '/' + f.queue.length : '…' })
       : p.running
         ? t('live_profile', { h: p.target || '?', stage: t(p.stage === 'replies' ? 'stage_replies' : 'stage_threads') })
-        : lk.grabbing
-          ? t('live_liked')
-          : s.grabbing
-            ? t('live_saved')
-            : t('live_idle');
+        : sr.running
+          ? t('live_search', { q: sr.query || '…' })
+          : lk.grabbing
+            ? t('live_liked')
+            : s.grabbing
+              ? t('live_saved')
+              : t('live_idle');
   }
 
   async function loadStorage() {
@@ -104,13 +112,16 @@
 
   const orderOf = (p) => (p.savedOrder != null ? p.savedOrder
     : p.likedOrder != null ? p.likedOrder
-      : p.feedOrder != null ? p.feedOrder : p.profileOrder);
+      : p.feedOrder != null ? p.feedOrder
+        : p.searchOrder != null ? p.searchOrder : p.profileOrder);
 
   function captureCmp(a, b) {
     const s = SRC[a._source].order - SRC[b._source].order;
     if (s) return s;
     const ah = a.profileHandle || '', bh = b.profileHandle || '';
     if (ah !== bh) return ah < bh ? -1 : 1;
+    const aq = a.searchQuery || '', bq = b.searchQuery || '';
+    if (aq !== bq) return aq < bq ? -1 : 1;
     const grp = ((a.feedIndex != null ? a.feedIndex : a.sectionIndex) || 0)
       - ((b.feedIndex != null ? b.feedIndex : b.sectionIndex) || 0);
     if (grp) return grp;
@@ -124,6 +135,7 @@
   function inScope(p) { // source + facet filters, not search/media/author
     if (state.source !== 'all' && p._source !== state.source) return false;
     if (state.feeds.size && !state.feeds.has(p.feed)) return false;
+    if (state.queries.size && !state.queries.has(p.searchQuery)) return false;
     if (state.handles.size && !state.handles.has(p.profileHandle)) return false;
     if (state.sections.size && !state.sections.has(p.section)) return false;
     return true;
@@ -152,6 +164,7 @@
           (p.author && p.author.handle) || '',
           (p.author && p.author.name) || '',
           p.feed || '',
+          p.searchQuery || '',
           p.profileHandle || '',
           (p.replyTo && p.replyTo.text) || '',
         ].join('\n').toLowerCase();
@@ -211,7 +224,7 @@
     // source nav
     const nav = $('sourceNav');
     nav.textContent = '';
-    const counts = { saved: 0, liked: 0, feed: 0, profile: 0 };
+    const counts = { saved: 0, liked: 0, feed: 0, profile: 0, search: 0 };
     for (const p of all) counts[p._source]++;
     const rows = [['all', t('nav_all'), all.length]]
       .concat(Object.keys(SRC).map((k) => [k, t(SRC[k].labelKey), counts[k]]));
@@ -219,7 +232,7 @@
       nav.appendChild(chip(label, n, state.source === key, () => {
         state.source = key;
         // facets tied to another source no longer apply
-        state.feeds.clear(); state.handles.clear(); state.sections.clear();
+        state.feeds.clear(); state.queries.clear(); state.handles.clear(); state.sections.clear();
         update();
       }));
     }
@@ -239,6 +252,23 @@
       }
       $('feedFacetClear').hidden = !state.feeds.size;
       $('feedFacetClear').onclick = (e) => { e.preventDefault(); state.feeds.clear(); update(); };
+    }
+
+    // search-query facet
+    const searchPosts = all.filter((p) => p._source === 'search');
+    const showQueries = searchPosts.length && (state.source === 'all' || state.source === 'search');
+    $('searchFacet').hidden = !showQueries;
+    if (showQueries) {
+      const box = $('searchChips');
+      box.textContent = '';
+      for (const [q, n] of tally(searchPosts, (p) => p.searchQuery)) {
+        box.appendChild(chip(q, n, state.queries.has(q), () => {
+          if (state.queries.has(q)) state.queries.delete(q); else state.queries.add(q);
+          update();
+        }));
+      }
+      $('searchFacetClear').hidden = !state.queries.size;
+      $('searchFacetClear').onclick = (e) => { e.preventDefault(); state.queries.clear(); update(); };
     }
 
     // profile facet
@@ -436,9 +466,10 @@
     const b = document.createElement('span');
     b.className = 'badge ' + p._source;
     b.textContent = p._source === 'feed' ? (p.feed || 'feed')
-      : p._source === 'profile' ? t(p.section === 'replies' ? 'badge_reply' : 'badge_thread')
-        : p._source === 'liked' ? t('badge_liked')
-          : t('badge_saved');
+      : p._source === 'search' ? '⌕ ' + (p.searchQuery || t('nav_search'))
+        : p._source === 'profile' ? t(p.section === 'replies' ? 'badge_reply' : 'badge_thread')
+          : p._source === 'liked' ? t('badge_liked')
+            : t('badge_saved');
     b.title = p._source === 'profile' ? `${p.profileHandle || ''} · ${p.section}` : b.textContent;
     return b;
   }
@@ -647,7 +678,7 @@
   const cardCache = new Map(); // post key -> card element, LRU order
 
   const keyOf = (p) =>
-    p._source + '|' + (p.feed || p.profileHandle || '') + '|' + (p.section || '') + '|' + p.id;
+    p._source + '|' + (p.feed || p.profileHandle || p.searchQuery || '') + '|' + (p.section || '') + '|' + p.id;
 
   const rowH = (r) => rowHeights[r] || EST;
   const rowCount = () => Math.ceil(view.length / cols);
@@ -837,14 +868,15 @@
   // ---- reset all filters ----
 
   function hasActiveFilters() {
-    return state.source !== 'all' || state.feeds.size > 0 || state.handles.size > 0
+    return state.source !== 'all' || state.feeds.size > 0 || state.queries.size > 0
+      || state.handles.size > 0
       || state.sections.size > 0 || state.authors.size > 0 || state.media !== 'all'
       || state.minMetric > 0 || !!state.dateFrom || !!state.dateTo || !!state.q.trim();
   }
 
   function resetFilters() {
     state.source = 'all';
-    state.feeds.clear(); state.handles.clear(); state.sections.clear(); state.authors.clear();
+    state.feeds.clear(); state.queries.clear(); state.handles.clear(); state.sections.clear(); state.authors.clear();
     state.media = 'all'; state.minMetric = 0; state.q = '';
     $('q').value = ''; $('mediaSel').value = 'all'; $('minSel').value = '0';
     // last: clearing the date range commits and fires onChange -> update()
@@ -1139,7 +1171,7 @@
   $('delShown').addEventListener('click', async () => {
     if (!view.length) return;
     if (!(await confirmDialog(t('confirm_delete', { n: view.length.toLocaleString() })))) return;
-    const keys = { saved: [], liked: [], feed: [], profile: [] };
+    const keys = { saved: [], liked: [], feed: [], profile: [], search: [] };
     for (const p of view) keys[p._source].push(p._key);
     $('delShown').disabled = true;
     try {
@@ -1155,7 +1187,7 @@
   // put it in the filename so exports stay tellable-apart in Downloads
   function exportSuffix() {
     const one = (s) => (s.size === 1 ? [...s][0] : null);
-    let part = one(state.feeds) || one(state.handles) || one(state.authors)
+    let part = one(state.feeds) || one(state.queries) || one(state.handles) || one(state.authors)
       || (state.source !== 'all' ? state.source : null);
     if (!part) return '';
     part = String(part).replace(/^@/, '')
@@ -1180,7 +1212,8 @@
   const exportKind = () =>
     state.source === 'feed' ? 'feed'
       : state.source === 'profile' ? 'profile'
-        : state.source === 'liked' ? 'liked' : undefined;
+        : state.source === 'liked' ? 'liked'
+          : state.source === 'search' ? 'search' : undefined;
 
   $('expJson').addEventListener('click', () => download(TSEExport.toJSON(view), 'application/json', 'json'));
   $('expCsv').addEventListener('click', () => download(TSEExport.toCSV(view, exportKind()), 'text/csv', 'csv'));
@@ -1279,8 +1312,8 @@
   let reloadTimer = null;
   chrome.storage.onChanged.addListener((changes, area) => {
     if (area !== 'local') return;
-    if (changes.tse_state || changes.tse_liked_state || changes.tse_feed_state || changes.tse_profile_state) loadLive();
-    if (changes.tse_posts || changes.tse_liked_posts || changes.tse_feed_posts || changes.tse_profile_posts) {
+    if (changes.tse_state || changes.tse_liked_state || changes.tse_feed_state || changes.tse_profile_state || changes.tse_search_state) loadLive();
+    if (changes.tse_posts || changes.tse_liked_posts || changes.tse_feed_posts || changes.tse_profile_posts || changes.tse_search_posts) {
       clearTimeout(reloadTimer);
       reloadTimer = setTimeout(async () => {
         await loadPosts();

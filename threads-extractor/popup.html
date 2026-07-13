@@ -229,6 +229,48 @@
     }
     input[type="date"]:focus { outline: 1px solid #4a4a4a; }
     input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); cursor: pointer; }
+    input[type="checkbox"] {
+      margin-left: auto;
+      width: 16px; height: 16px;
+      accent-color: var(--text);
+      cursor: pointer;
+    }
+
+    /* ---- remembered searches ---- */
+    #searchHistory {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 5px;
+      margin-bottom: 4px;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+    #searchHistory::-webkit-scrollbar { width: 8px; }
+    #searchHistory::-webkit-scrollbar-thumb { background: #303030; border-radius: 99px; }
+    .histItem {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 8px;
+      border-radius: 9px;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    .histItem:hover { background: var(--card2); }
+    .histItem .hq { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .histItem .hmeta {
+      margin-left: auto; flex: none;
+      font-size: 10.5px; color: var(--faint);
+      font-variant-numeric: tabular-nums;
+    }
+    .histItem .hgo {
+      flex: none;
+      border: 1px solid var(--border); border-radius: 7px;
+      background: transparent; color: var(--muted);
+      font-size: 10.5px; font-family: inherit;
+      padding: 2px 7px; cursor: pointer;
+    }
+    .histItem .hgo:hover { color: var(--text); border-color: #3f3f3f; }
+    .histItem .hgo:disabled { opacity: 0.4; cursor: default; }
 
     .handleRow {
       display: flex; align-items: center;
@@ -331,6 +373,7 @@
     <button id="tabLiked"><span class="lbl" data-i18n="tab_liked">Liked</span><span class="badge" id="badgeLiked">0</span></button>
     <button id="tabFeeds"><span class="lbl" data-i18n="tab_feeds">Feeds</span><span class="badge" id="badgeFeeds">0</span></button>
     <button id="tabProfile"><span class="lbl" data-i18n="tab_profile">Profile</span><span class="badge" id="badgeProfile">0</span></button>
+    <button id="tabSearch"><span class="lbl" data-i18n="tab_search">Search</span><span class="badge" id="badgeSearch">0</span></button>
   </div>
 
   <!-- ================= SAVED ================= -->
@@ -458,6 +501,46 @@
       <button id="btnProfMd" class="act" disabled>MD</button>
     </div>
     <button id="btnProfClear" class="act ghost" data-i18n="btn_clear_prof" disabled>Clear profile data</button>
+  </div>
+
+  <!-- ================= SEARCH ================= -->
+  <div class="pane" id="paneSearch">
+    <div class="stat">
+      <div class="num" id="searchCount">0</div>
+      <div class="lbl" data-i18n="lbl_search_captured">search results captured</div>
+      <div class="msg" id="searchStatus">ready</div>
+      <div class="bar" id="searchBar"><div class="fill" id="searchBarFill"></div></div>
+    </div>
+
+    <div class="handleRow">
+      <span class="at">⌕</span>
+      <input type="text" id="searchQuery" data-i18n-placeholder="ph_search_terms" placeholder="search terms" autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="targetRow">
+      <label for="searchTarget" data-i18n="lbl_search_target">Max results</label>
+      <input type="number" id="searchTarget" min="1" max="2000" step="1" value="200" />
+    </div>
+    <div class="targetRow">
+      <label for="searchRecent" data-i18n="lbl_search_recent">"Recent" filter (newest first)</label>
+      <input type="checkbox" id="searchRecent" checked />
+    </div>
+
+    <button id="btnSearchStart" class="act primary" data-i18n="btn_grab_search">Grab search results</button>
+    <button id="btnSearchStop" class="act stop" data-i18n="btn_stop" disabled>Stop</button>
+    <div class="hint" data-i18n="hint_search">runs the search in your Threads tab and captures results while it scrolls · re-grabbing a query replaces its earlier snapshot · keep the tab visible</div>
+
+    <div class="pickHead" id="searchHistHead" hidden>
+      <span class="t" data-i18n="pick_search_history">Remembered searches</span>
+    </div>
+    <div id="searchHistory" hidden></div>
+
+    <div class="exportHead" data-i18n="head_export">Export</div>
+    <div class="row">
+      <button id="btnSearchJson" class="act" disabled>JSON</button>
+      <button id="btnSearchCsv" class="act" disabled>CSV</button>
+      <button id="btnSearchMd" class="act" disabled>MD</button>
+    </div>
+    <button id="btnSearchClear" class="act ghost" data-i18n="btn_clear_search" disabled>Clear search data</button>
   </div>
 
   <div class="storeRow" id="storeRow" hidden>

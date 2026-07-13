@@ -2,9 +2,9 @@
 
 Personal MV3 Chrome extension that grabs **your own** Threads data — saved
 (bookmarked) posts, the top N posts of any feed (For you / Following / Ghost
-posts / custom feeds, one by one or in waves of 4 board columns), and
-profiles (threads + replies) — then lets you browse it all in a local
-dashboard and export JSON / CSV / Markdown. Everything stays local — no
+posts / custom feeds, one by one or in waves of 4 board columns), profiles
+(threads + replies), and search results (any query, Top or Recent) — then
+lets you browse it all in a local dashboard and export JSON / CSV / Markdown. Everything stays local — no
 backend, no accounts, no data leaves your machine.
 
 ## Install (unpacked)
@@ -99,6 +99,24 @@ one profile at a time, with the same deliberately throttled scrolling — a
 private account you don't follow simply returns nothing. Keep it personal and
 low-volume.
 
+### Search results (any query · Top or Recent)
+
+1. In the popup's **Search** tab, type the search terms, pick **Max results**
+   and whether to use the **"Recent" filter** (default on — results paginate
+   newest-first; off = Threads' "Top" ranking), then **Grab search results**.
+2. The extension navigates your Threads tab to `/search?q=…`, auto-scrolls
+   with the same throttled pacing, and stops at the target count or the end
+   of the results.
+3. Each post is tagged with its query (`searchQuery`), the filter used
+   (`searchRecent`), and capture order (`searchOrder`, 1 = first result at
+   grab time). Different queries **accumulate**; re-grabbing a query replaces
+   only that query's earlier snapshot.
+4. The popup keeps a **remembered searches** list (last 15 queries): click a
+   row to refill the form, or its ▶ button to re-run that search as-is.
+5. Export with the Search tab's **JSON / CSV / MD** buttons (`query` +
+   `searchOrder` columns in CSV; Markdown groups by query). In the dashboard,
+   search results are a source of their own with per-query filter chips.
+
 ### Dashboard (browse everything captured)
 
 Click **Dashboard ↗** in the popup header to open a full-page view of every
@@ -161,6 +179,9 @@ threads.com tab
 | For you / Following path | `data…feedData.edges[].node.text_post_app_thread.thread_items[].post` (edges without a thread — e.g. `suggested_users` — are skipped) |
 | Custom feed query | `BarcelonaCustomFeedRefetchableQuery` (page `/custom_feed/<id>/`) |
 | Custom feed path | `data…results.edges[].node.thread_items[].post` (`results` is generic, so it only counts when its edges carry posts) |
+| Search query (2026-07-13) | `BarcelonaSearchResultsQuery` (page `/search?q=<q>`, `&filter=recent` for the Recent tab) |
+| Search path | `data…searchResults.edges[].node.thread.thread_items[].post` — the connection is `searchResults` itself (`edges` + `page_info` directly on it); the Profiles serp reuses it with non-post nodes, which are skipped |
+| Search attribution | request `variables.query` (the term) + `variables.recent` (`1` = Recent tab, `0` = Top); embedded first batches join their `adp_BarcelonaSearchResultsQueryRelayPreloader_…` registration like feeds do |
 | Pagination | `<conn>.page_info.{end_cursor, has_next_page}` on every connection |
 | Post URL | `https://www.threads.com/@{user.username}/post/{code}` |
 | Saved timestamp | **not exposed** anywhere → `savedAt` is always `null` |

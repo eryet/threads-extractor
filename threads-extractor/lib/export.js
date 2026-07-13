@@ -10,7 +10,8 @@
     // back to newest-posted-first at the end.
     const orderOf = (p) => (p.savedOrder != null ? p.savedOrder
       : p.likedOrder != null ? p.likedOrder
-        : p.feedOrder != null ? p.feedOrder : p.profileOrder);
+        : p.feedOrder != null ? p.feedOrder
+          : p.searchOrder != null ? p.searchOrder : p.profileOrder);
     const feedGroup = (p) => (p.feedIndex != null ? p.feedIndex : p.sectionIndex) || 0;
     return posts.slice().sort((a, b) => {
       // profile grabs: group by whose profile, then section (threads<replies)
@@ -18,6 +19,9 @@
       if (ah !== bh) return ah < bh ? -1 : 1;
       const as = a.sectionIndex || 0, bs = b.sectionIndex || 0;
       if (ah && as !== bs) return as - bs;
+      // search grabs: group by query
+      const aq = a.searchQuery || '', bq = b.searchQuery || '';
+      if (aq !== bq) return aq < bq ? -1 : 1;
       const af = feedGroup(a), bf = feedGroup(b);
       if (af !== bf) return af - bf;
       const ao = orderOf(a), bo = orderOf(b);
@@ -41,14 +45,17 @@
     const feed = kind === 'feed';
     const profile = kind === 'profile';
     const liked = kind === 'liked';
+    const search = kind === 'search';
     const ENGAGEMENT = ['likeCount', 'replyCount', 'repostCount', 'quoteCount', 'shareCount'];
     const header = profile
       ? ['profile', 'section', 'profileOrder', 'id', 'url', 'text', 'takenAt', ...ENGAGEMENT, 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
       : feed
         ? ['feed', 'feedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', ...ENGAGEMENT, 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
-        : liked
-          ? ['likedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', ...ENGAGEMENT, 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
-          : ['savedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', 'savedAt', ...ENGAGEMENT, 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt'];
+        : search
+          ? ['query', 'searchOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', ...ENGAGEMENT, 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
+          : liked
+            ? ['likedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', ...ENGAGEMENT, 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt']
+            : ['savedOrder', 'id', 'url', 'handle', 'name', 'text', 'takenAt', 'savedAt', ...ENGAGEMENT, 'replyToHandle', 'replyToUrl', 'replyToText', 'media', 'capturedAt'];
     const rows = [header.join(',')];
     for (const p of sortPosts(posts)) {
       const rt = p.replyTo || {};
@@ -58,14 +65,16 @@
         cells = [p.profileHandle, p.section, p.profileOrder, p.id, p.url, p.text, p.takenAt, ...engagement,
           rt.author && rt.author.handle, rt.url, rt.text];
       } else {
-        cells = feed ? [p.feed, p.feedOrder] : [liked ? p.likedOrder : p.savedOrder];
+        cells = feed ? [p.feed, p.feedOrder]
+          : search ? [p.searchQuery, p.searchOrder]
+            : [liked ? p.likedOrder : p.savedOrder];
         cells.push(
           p.id, p.url,
           p.author && p.author.handle,
           p.author && p.author.name,
           p.text, p.takenAt
         );
-        if (!feed && !liked) cells.push(p.savedAt);
+        if (!feed && !liked && !search) cells.push(p.savedAt);
         cells.push(...engagement, rt.author && rt.author.handle, rt.url, rt.text);
       }
       cells.push((p.media || []).join(' | '), p.capturedAt);
@@ -78,16 +87,18 @@
   function toMarkdown(posts, kind) {
     const feed = kind === 'feed';
     const profile = kind === 'profile';
-    const grouped = feed || profile;
+    const search = kind === 'search';
+    const grouped = feed || profile || search;
     const sorted = sortPosts(posts);
     const out = [
       profile ? '# Threads profile posts' : feed ? '# Threads feed posts'
-        : kind === 'liked' ? '# Threads liked posts' : '# Threads saved posts',
+        : search ? '# Threads search results'
+          : kind === 'liked' ? '# Threads liked posts' : '# Threads saved posts',
       '',
       `${sorted.length} posts · exported ${new Date().toISOString().slice(0, 10)}`,
       '',
     ];
-    let currentGroup = null;   // feed name / saved (n/a)
+    let currentGroup = null;   // feed name / search query / saved (n/a)
     let currentHandle = null;  // profile owner
     let currentSection = null; // profile section
     for (const p of sorted) {
@@ -106,6 +117,11 @@
         if (p.feed !== currentGroup) {
           currentGroup = p.feed;
           out.push(`## Feed: ${currentGroup || 'unknown'}`, '');
+        }
+      } else if (search) {
+        if (p.searchQuery !== currentGroup) {
+          currentGroup = p.searchQuery;
+          out.push(`## Search: ${currentGroup || 'unknown'}`, '');
         }
       }
       if (!profile) {

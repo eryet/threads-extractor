@@ -362,6 +362,57 @@
   "err_bad_response": {
     "message": "非預期的回應 — Threads 的資料格式可能已變更。"
   },
+  "tab_search": {
+    "message": "搜尋"
+  },
+  "lbl_search_captured": {
+    "message": "已擷取搜尋結果"
+  },
+  "ph_search_terms": {
+    "message": "搜尋關鍵字"
+  },
+  "lbl_search_target": {
+    "message": "最多結果數"
+  },
+  "lbl_search_recent": {
+    "message": "「最新」篩選（新→舊）"
+  },
+  "btn_grab_search": {
+    "message": "擷取搜尋結果"
+  },
+  "btn_clear_search": {
+    "message": "清除搜尋資料"
+  },
+  "hint_search": {
+    "message": "會在你的 Threads 分頁執行搜尋並邊捲動邊擷取結果 · 重新擷取同一關鍵字會取代先前的快照 · 請保持分頁可見"
+  },
+  "pick_search_history": {
+    "message": "記住的搜尋"
+  },
+  "hist_rerun": {
+    "message": "再次擷取這個搜尋"
+  },
+  "st_search_progress": {
+    "message": "「{q}」— {cur} / {target}"
+  },
+  "st_search_done": {
+    "message": "共 {count} 筆結果（{n} 個關鍵字）"
+  },
+  "st_search_ready": {
+    "message": "輸入關鍵字後開始擷取"
+  },
+  "banner_search": {
+    "message": "正在擷取搜尋結果"
+  },
+  "nav_search": {
+    "message": "搜尋"
+  },
+  "sec_search": {
+    "message": "搜尋"
+  },
+  "live_search": {
+    "message": "擷取搜尋「{q}」中…"
+  },
   "btn_reset_filters": {
     "message": "清除所有篩選"
   },

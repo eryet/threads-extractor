@@ -8,6 +8,8 @@
   const LIKED_RE = /^\/liked\/?$/;
   // single-column feed pages that window-scroll (the "/" board layout does not)
   const FEED_RE = /^\/(for_you|following|ghost_posts|custom_feed\/[^/]+)\/?$/;
+  // search results page (?q=… names the query); window-scrolls like a feed
+  const SEARCH_RE = /^\/search\/?$/;
   // a profile root or its replies tab (NOT /@user/post/… permalinks)
   const PROFILE_RE = /^\/@[^/]+(?:\/replies)?\/?$/;
   // board home: pinned feeds side by side, each in its own scroll container
@@ -38,6 +40,7 @@
     if (SAVED_RE.test(location.pathname)) return 'saved';
     if (LIKED_RE.test(location.pathname)) return 'liked';
     if (FEED_RE.test(location.pathname)) return 'feed';
+    if (SEARCH_RE.test(location.pathname)) return 'search';
     if (PROFILE_RE.test(location.pathname)) return 'profile';
     if (BOARD_RE.test(location.pathname)) return 'board';
     return null;
@@ -93,7 +96,7 @@
   let banner = null;
   TSEI18n.init(); // resolve language early; the banner shows well after injection
 
-  const BANNER_KEYS = { saved: 'banner_saved', liked: 'banner_liked', feed: 'banner_feed', profile: 'banner_profile', columns: 'banner_columns' };
+  const BANNER_KEYS = { saved: 'banner_saved', liked: 'banner_liked', feed: 'banner_feed', profile: 'banner_profile', columns: 'banner_columns', search: 'banner_search' };
 
   function showBanner(m) {
     const label = TSEI18n.t(BANNER_KEYS[m] || 'banner_generic');
@@ -174,6 +177,7 @@
       pageInfo: d.pageInfo,
       origin: d.origin,
       feedUrl: d.feedUrl || null,
+      searchQuery: d.searchQuery || null,
       path: location.pathname,
     };
     if (msg.kind === 'feed') msg.feedName = currentFeedName();

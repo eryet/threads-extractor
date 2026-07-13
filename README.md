@@ -31,6 +31,11 @@ no backend, no accounts, no analytics, and nothing ever leaves your machine.
   added when each wave ends.
 - **Profiles** — anyone's public threads and replies (replies include the
   full parent post being replied to).
+- **Search results** — type any query and capture its results from
+  `threads.com/search` (the "Recent" filter by default, so results paginate
+  chronologically; "Top" optional). Each post is tagged with the query,
+  different queries accumulate, and re-grabbing a query replaces its earlier
+  snapshot. The popup remembers your recent searches for one-click re-runs.
 - Every post records author, text, media URLs, like count, **reply count**,
   posted time, capture order, and — where a thread arrives as a
   conversation preview — the full `replyTo` parent.

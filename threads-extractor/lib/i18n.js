@@ -17,6 +17,8 @@
     'Lost the Threads tab mid-grab.': '擷取途中失去 Threads 分頁。',
     'Lost the Threads tab.': '失去 Threads 分頁。',
     'No feeds selected.': '未選擇任何動態。',
+    'No search query.': '未輸入搜尋關鍵字。',
+    'search stalled — stopped (keep the tab visible)': '搜尋擷取停滯 — 已停止（請保持分頁可見）',
     'Could not open any feed columns on the board.': '無法在看板開啟任何動態欄位。',
     'columns run stalled — stopped (keep the tab visible)': '欄位執行停滯 — 已停止（請保持分頁可見）',
     'Could not find your profile link — reload the Threads tab, or type a handle.': '找不到你的個人檔案連結 — 請重新整理 Threads 分頁，或輸入帳號。',
