@@ -887,9 +887,9 @@
     return out.join('\n').trim() + '\n';
   }
 
-  // ---- transient toast (bottom-center); sticky stays until replaced ----
+  // ---- transient toast (bottom-center) ----
   let toastTimer = null;
-  function toast(message, isError, sticky) {
+  function toast(message, isError) {
     let el = $('toast');
     if (!el) {
       el = document.createElement('div');
@@ -900,7 +900,23 @@
     el.classList.toggle('err', !!isError);
     el.classList.add('show');
     clearTimeout(toastTimer);
-    if (!sticky) toastTimer = setTimeout(() => el.classList.remove('show'), isError ? 4200 : 2600);
+    toastTimer = setTimeout(() => el.classList.remove('show'), isError ? 4200 : 2600);
+  }
+
+  // ---- fetch banner (top-center, spinner) — visible while a grab is in flight ----
+  function fetchBanner(message) {
+    let el = $('fetchBanner');
+    if (message == null) { if (el) el.classList.remove('show'); return; }
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'fetchBanner';
+      const spin = document.createElement('span');
+      spin.className = 'spin';
+      el.append(spin, document.createElement('span'));
+      document.body.appendChild(el);
+    }
+    el.lastChild.textContent = message;
+    el.classList.add('show');
   }
 
   // ---- fetch who liked / reposted a post, on demand, and attach to the record ----
@@ -926,7 +942,7 @@
     const gid = kind + '|' + p._source + '|' + p._key;
     if (grabbingEngagers.has(gid)) return;
     grabbingEngagers.add(gid);
-    toast(t(K.grabbing), false, true); // sticky: large lists take a while to page through
+    fetchBanner(t(K.grabbing)); // large lists take a while to page through
     let r = null;
     try {
       r = await chrome.runtime.sendMessage({
@@ -934,6 +950,7 @@
       });
     } catch (_) { /* r stays null */ }
     grabbingEngagers.delete(gid);
+    if (!grabbingEngagers.size) fetchBanner(null); // another grab may still be paging
     if (!r || !r.ok) { toast((r && r.error) || t(K.failed), true); return; }
     toast(r.count ? t(K.done, { n: r.count }) : t(K.none));
     // the card's cached DOM was built without this list, and adding it doesn't
