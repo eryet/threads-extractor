@@ -263,6 +263,12 @@
   "menu_refresh_reposters": {
     "message": "重新抓取轉發的人"
   },
+  "menu_who_quoted": {
+    "message": "誰引用了"
+  },
+  "menu_refresh_quoters": {
+    "message": "重新抓取引用的人"
+  },
   "likers_grabbing": {
     "message": "正在抓取按讚的人…"
   },
@@ -287,6 +293,18 @@
   "reposters_failed": {
     "message": "無法取得轉發的人"
   },
+  "quoters_grabbing": {
+    "message": "正在抓取引用的人…"
+  },
+  "quoters_done": {
+    "message": "取得 {n} 位引用的人"
+  },
+  "quoters_none": {
+    "message": "這則貼文沒有列出引用的人"
+  },
+  "quoters_failed": {
+    "message": "無法取得引用的人"
+  },
   "likers_summary": {
     "message": "❤ {n} 人按讚"
   },
@@ -299,11 +317,17 @@
   "reposters_summary_of": {
     "message": "🔁 {total} 次轉發中的 {n} 人"
   },
+  "quoters_summary": {
+    "message": "❝ {n} 人引用"
+  },
+  "quoters_summary_of": {
+    "message": "❝ {total} 次引用中的 {n} 人"
+  },
   "likers_partial": {
     "message": "部分名單"
   },
   "likers_partial_hint": {
-    "message": "依最新排序抓取。名單很大時會在安全上限停止，且讚數／轉發數會隨新互動持續變動，因此抓到的數量可能與總數不同。"
+    "message": "依最新排序抓取。名單很大時會在安全上限停止，且讚數／轉發數／引用數會隨新互動持續變動，因此抓到的數量可能與總數不同。"
   },
   "likers_copy": {
     "message": "複製帳號"

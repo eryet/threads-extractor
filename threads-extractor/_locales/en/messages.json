@@ -263,6 +263,12 @@
   "menu_refresh_reposters": {
     "message": "Refresh who reposted this"
   },
+  "menu_who_quoted": {
+    "message": "Who quoted this"
+  },
+  "menu_refresh_quoters": {
+    "message": "Refresh who quoted this"
+  },
   "likers_grabbing": {
     "message": "Fetching who liked this…"
   },
@@ -287,6 +293,18 @@
   "reposters_failed": {
     "message": "Couldn't fetch reposters"
   },
+  "quoters_grabbing": {
+    "message": "Fetching who quoted this…"
+  },
+  "quoters_done": {
+    "message": "Got {n} quote(s)"
+  },
+  "quoters_none": {
+    "message": "No quotes are listed for this post"
+  },
+  "quoters_failed": {
+    "message": "Couldn't fetch quotes"
+  },
   "likers_summary": {
     "message": "❤ Liked by {n}"
   },
@@ -299,11 +317,17 @@
   "reposters_summary_of": {
     "message": "🔁 Reposted by {n} of {total}"
   },
+  "quoters_summary": {
+    "message": "❝ Quoted by {n}"
+  },
+  "quoters_summary_of": {
+    "message": "❝ Quoted by {n} of {total}"
+  },
   "likers_partial": {
     "message": "partial list"
   },
   "likers_partial_hint": {
-    "message": "Fetched newest-first. Very large lists stop at a safety cap, and the count keeps changing as new likes/reposts arrive, so the fetched number can differ from the total."
+    "message": "Fetched newest-first. Very large lists stop at a safety cap, and the count keeps changing as new likes/reposts/quotes arrive, so the fetched number can differ from the total."
   },
   "likers_copy": {
     "message": "Copy handles"

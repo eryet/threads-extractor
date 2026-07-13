@@ -1025,8 +1025,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         break;
       }
 
-      case 'GET_LIKERS': { // dashboard: fetch who liked (or reposted) one post, on demand
-        const repost = msg.tabType === 'repost';
+      case 'GET_LIKERS': { // dashboard: fetch who liked / reposted / quoted one post, on demand
+        const FIELDS = { like: 'likers', repost: 'reposters', quote: 'quoters' };
+        const tabType = FIELDS[msg.tabType] ? msg.tabType : 'like';
         const tab = await findThreadsTab();
         if (!tab) {
           sendResponse({ ok: false, error: 'No threads.com tab found — open threads.com first.' });
@@ -1035,7 +1036,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         let r;
         try {
           r = await chrome.tabs.sendMessage(tab.id, {
-            type: 'FETCH_ENGAGERS', postId: msg.postId, tabType: repost ? 'repost' : 'like',
+            type: 'FETCH_ENGAGERS', postId: msg.postId, tabType,
           });
         } catch (e) {
           sendResponse({ ok: false, error: 'Could not reach the Threads tab — reload it and try again.' });
@@ -1050,7 +1051,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           saved: store.posts, liked: store.likedPosts,
           feed: store.feedPosts, profile: store.profilePosts,
         };
-        const field = repost ? 'reposters' : 'likers';
+        const field = FIELDS[tabType];
         const bucket = buckets[msg.source];
         const rec = bucket && bucket[msg.key];
         if (rec) {

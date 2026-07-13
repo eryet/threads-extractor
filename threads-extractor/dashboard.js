@@ -565,6 +565,7 @@
     if (foot.childNodes.length) c.appendChild(foot);
     if (p.likers && p.likers.length) c.appendChild(engagersBlock(p, 'like'));
     if (p.reposters && p.reposters.length) c.appendChild(engagersBlock(p, 'repost'));
+    if (p.quoters && p.quoters.length) c.appendChild(engagersBlock(p, 'quote'));
     return c;
   }
 
@@ -934,6 +935,12 @@
       grabbing: 'reposters_grabbing', done: 'reposters_done', none: 'reposters_none', failed: 'reposters_failed',
       summary: 'reposters_summary', summaryOf: 'reposters_summary_of',
     },
+    quote: {
+      tabType: 'quote', field: 'quoters', countField: 'quoteCount', partialField: 'quotersPartial',
+      menu: 'menu_who_quoted', refresh: 'menu_refresh_quoters', icon: '❝',
+      grabbing: 'quoters_grabbing', done: 'quoters_done', none: 'quoters_none', failed: 'quoters_failed',
+      summary: 'quoters_summary', summaryOf: 'quoters_summary_of',
+    },
   };
 
   const grabbingEngagers = new Set(); // "kind|source|key" currently in flight
@@ -1033,7 +1040,7 @@
     });
     menuEl.appendChild(copyMd);
 
-    for (const kind of ['like', 'repost']) {
+    for (const kind of ['like', 'repost', 'quote']) {
       const K = ENGAGER[kind];
       const has = !!p[K.field];
       const btn = menuBtn(K.icon, t(has ? K.refresh : K.menu));

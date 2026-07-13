@@ -306,7 +306,7 @@
     if (!gqlTemplate) throw new Error('Threads request context not ready — reload the Threads tab and try again.');
     const pid = String(postId || '').trim();
     if (!/^\d+$/.test(pid)) throw new Error('This post has no numeric id to look up.');
-    const tab = tabType === 'repost' ? 'repost' : 'like';
+    const tab = tabType === 'repost' || tabType === 'quote' ? tabType : 'like';
     const providers = {};
     for (const k of Object.keys(ENGAGERS_PROVIDERS)) {
       const full = '__relay_internal__pv__' + k;
