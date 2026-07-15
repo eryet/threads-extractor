@@ -440,6 +440,21 @@
   "open_profile": {
     "message": "open profile"
   },
+  "mode_posts": {
+    "message": "Posts"
+  },
+  "acc_sort_order": {
+    "message": "Capture order"
+  },
+  "acc_sort_followers": {
+    "message": "Most followers"
+  },
+  "acc_sort_followers_asc": {
+    "message": "Fewest followers"
+  },
+  "acc_sort_handle": {
+    "message": "Handle A→Z"
+  },
   "btn_reset_filters": {
     "message": "Clear all filters"
   },

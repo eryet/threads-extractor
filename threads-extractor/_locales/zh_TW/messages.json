@@ -440,6 +440,21 @@
   "open_profile": {
     "message": "開啟個人檔案"
   },
+  "mode_posts": {
+    "message": "貼文"
+  },
+  "acc_sort_order": {
+    "message": "擷取順序"
+  },
+  "acc_sort_followers": {
+    "message": "追蹤者最多"
+  },
+  "acc_sort_followers_asc": {
+    "message": "追蹤者最少"
+  },
+  "acc_sort_handle": {
+    "message": "帳號 A→Z"
+  },
   "btn_reset_filters": {
     "message": "清除所有篩選"
   },

@@ -472,6 +472,28 @@
     .badge.search { color: #d8b4fe; background: rgba(168, 85, 247, 0.13); }
     .badge.accounts { color: #d8b4fe; background: rgba(168, 85, 247, 0.13); }
 
+    /* ---- Posts / Accounts mode switch ---- */
+    .modeSwitch {
+      display: flex; gap: 4px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 3px;
+      margin-bottom: 12px;
+    }
+    .modeSwitch button {
+      flex: 1 1 0; min-width: 0;
+      padding: 6px 4px;
+      border: 0; border-radius: 7px;
+      background: transparent;
+      color: var(--muted);
+      font-family: inherit; font-size: 12px; font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .modeSwitch button.active { background: var(--card2); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+    .modeSwitch .n { color: var(--faint); font-variant-numeric: tabular-nums; }
+
     /* ---- account cards (search "Profiles" serp results) ---- */
     .accCard .hd { align-items: center; gap: 10px; }
     .accCard .avatar {
@@ -686,7 +708,12 @@
       <div class="dot" id="liveDot"></div>
     </div>
 
-    <details class="sideSec" data-sec="source" open>
+    <div class="modeSwitch" id="modeSwitch" hidden>
+      <button id="modePosts" class="active" data-i18n="mode_posts">Posts</button>
+      <button id="modeAccounts"><span data-i18n="nav_accounts">Accounts</span> <span class="n" id="accCount"></span></button>
+    </div>
+
+    <details class="sideSec" data-sec="source" id="sourceSec" open>
       <summary class="secHead" data-i18n="sec_source">Source</summary>
       <div class="chipWrap" id="sourceNav"></div>
     </details>
@@ -791,6 +818,12 @@
         <option value="100">≥ 100</option>
         <option value="500">≥ 500</option>
         <option value="1000">≥ 1000</option>
+      </select>
+      <select id="accSortSel" hidden>
+        <option value="order" data-i18n="acc_sort_order">Capture order</option>
+        <option value="followers" data-i18n="acc_sort_followers">Most followers</option>
+        <option value="followers_asc" data-i18n="acc_sort_followers_asc">Fewest followers</option>
+        <option value="handle" data-i18n="acc_sort_handle">Handle A→Z</option>
       </select>
       <select id="sortSel">
         <option value="capture" data-i18n="opt_sort_capture">Capture order (asc)</option>

@@ -124,13 +124,16 @@ low-volume.
 5. Export posts with **Export posts** (`query` + `searchOrder` CSV columns;
    Markdown groups by query) and accounts with **Export accounts** (appears
    once a Profiles grab has stored some). In the dashboard, search *posts*
-   are a source of their own, and account records get an **Accounts** source
-   rendered as profile cards (avatar, bio, follower count, verified/private,
-   link) — both filterable by the shared per-query chips and full-text
-   search. Selecting the Accounts source switches the dashboard's export
-   buttons to the account layout; mixed views export posts (JSON keeps every
-   record). Avatars use Meta's signed CDN URLs, so like post media they
-   expire after a few days and fall back to an initial-letter tile.
+   are a source of their own with per-query filter chips, while account
+   records get a whole separate **Accounts mode**: a Posts / Accounts switch
+   appears at the top of the sidebar (only once a Profiles grab has stored
+   some) and swaps the dashboard to profile cards (avatar, bio, follower
+   count, verified/private, link) with just the controls that make sense
+   there — per-query chips, full-text search, and an accounts sort (capture
+   order / followers / handle). Post-only filters, sources, and facets hide;
+   exports and "delete shown" follow the active mode. Avatars use Meta's
+   signed CDN URLs, so like post media they expire after a few days and fall
+   back to an initial-letter tile.
 
 ### Dashboard (browse everything captured)
 

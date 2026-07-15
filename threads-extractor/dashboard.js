@@ -11,6 +11,8 @@
   let view = [];    // filtered + sorted
 
   const state = {
+    mode: 'posts',           // posts | accounts — two different record shapes
+    accSort: 'order',        // accounts mode: order | followers | followers_asc | handle
     source: 'all',           // all | saved | feed | profile (single: it's a scope)
     // facet filters are multi-select: OR within a facet, AND across facets;
     // an empty set means "no filter"
@@ -28,13 +30,14 @@
     sort: 'capture',
   };
 
+  // post sources only — account records (search "Profiles" serp) live in
+  // their own dashboard mode (state.mode), not in the source list
   const SRC = {
     saved: { labelKey: 'nav_saved', order: 0 },
     liked: { labelKey: 'nav_liked', order: 1 },
     feed: { labelKey: 'nav_feeds', order: 2 },
     profile: { labelKey: 'nav_profiles', order: 3 },
     search: { labelKey: 'nav_search', order: 4 },
-    accounts: { labelKey: 'nav_accounts', order: 5 }, // search "Profiles" serp results
   };
 
   // ---- data ----
@@ -137,6 +140,7 @@
   }
 
   function inScope(p) { // source + facet filters, not search/media/author
+    if (p._source === 'accounts') return false; // accounts have their own mode
     if (state.source !== 'all' && p._source !== state.source) return false;
     if (state.feeds.size && !state.feeds.has(p.feed)) return false;
     if (state.queries.size && !state.queries.has(p.searchQuery)) return false;
@@ -150,6 +154,23 @@
   function applyFilters() {
     const q = state.q.trim().toLowerCase();
     unknownMetricHidden = 0;
+    // deleting the last account record drops the dashboard back to posts
+    if (state.mode === 'accounts' && !all.some((p) => p._source === 'accounts')) state.mode = 'posts';
+    if (state.mode === 'accounts') {
+      // accounts: only the query facet and free text apply
+      view = all.filter((p) => p._source === 'accounts'
+        && (!state.queries.size || state.queries.has(p.searchQuery))
+        && (!q || [p.handle || '', p.name || '', p.bio || '', p.searchQuery || '']
+          .join('\n').toLowerCase().includes(q)));
+      if (state.accSort === 'followers') view.sort((a, b) => (b.followers || 0) - (a.followers || 0));
+      else if (state.accSort === 'followers_asc') view.sort((a, b) => (a.followers || 0) - (b.followers || 0));
+      else if (state.accSort === 'handle') view.sort((a, b) => (a.handle || '').localeCompare(b.handle || ''));
+      else {
+        view.sort((a, b) => (a.searchQuery || '').localeCompare(b.searchQuery || '')
+          || (a.searchOrder || 0) - (b.searchOrder || 0));
+      }
+      return;
+    }
     view = all.filter((p) => {
       if (!inScope(p)) return false;
       if (state.authors.size && !(p.author && state.authors.has(p.author.handle))) return false;
@@ -171,8 +192,6 @@
           p.searchQuery || '',
           p.profileHandle || '',
           (p.replyTo && p.replyTo.text) || '',
-          // account records (search Profiles serp)
-          p.handle || '', p.name || '', p.bio || '',
         ].join('\n').toLowerCase();
         if (!hay.includes(q)) return false;
       }
@@ -227,25 +246,39 @@
   }
 
   function renderSidebar() {
-    // source nav
+    // Posts / Accounts mode switch (hidden until a Profiles grab stored some)
+    const accountsAll = all.filter((p) => p._source === 'accounts');
+    if (!accountsAll.length) state.mode = 'posts';
+    const postsMode = state.mode === 'posts';
+    $('modeSwitch').hidden = !accountsAll.length;
+    $('modePosts').classList.toggle('active', postsMode);
+    $('modeAccounts').classList.toggle('active', !postsMode);
+    $('accCount').textContent = accountsAll.length ? String(accountsAll.length) : '';
+    applyModeUI();
+
+    // source nav (posts only — accounts are a mode, not a source)
+    $('sourceSec').hidden = !postsMode;
     const nav = $('sourceNav');
     nav.textContent = '';
-    const counts = { saved: 0, liked: 0, feed: 0, profile: 0, search: 0, accounts: 0 };
-    for (const p of all) counts[p._source]++;
-    const rows = [['all', t('nav_all'), all.length]]
-      .concat(Object.keys(SRC).map((k) => [k, t(SRC[k].labelKey), counts[k]]));
-    for (const [key, label, n] of rows) {
-      nav.appendChild(chip(label, n, state.source === key, () => {
-        state.source = key;
-        // facets tied to another source no longer apply
-        state.feeds.clear(); state.queries.clear(); state.handles.clear(); state.sections.clear();
-        update();
-      }));
+    if (postsMode) {
+      const counts = { saved: 0, liked: 0, feed: 0, profile: 0, search: 0 };
+      for (const p of all) if (counts[p._source] != null) counts[p._source]++;
+      const postCount = all.length - accountsAll.length;
+      const rows = [['all', t('nav_all'), postCount]]
+        .concat(Object.keys(SRC).map((k) => [k, t(SRC[k].labelKey), counts[k]]));
+      for (const [key, label, n] of rows) {
+        nav.appendChild(chip(label, n, state.source === key, () => {
+          state.source = key;
+          // facets tied to another source no longer apply
+          state.feeds.clear(); state.queries.clear(); state.handles.clear(); state.sections.clear();
+          update();
+        }));
+      }
     }
 
     // feed facet
     const feedPosts = all.filter((p) => p._source === 'feed');
-    const showFeeds = feedPosts.length && (state.source === 'all' || state.source === 'feed');
+    const showFeeds = postsMode && feedPosts.length && (state.source === 'all' || state.source === 'feed');
     $('feedFacet').hidden = !showFeeds;
     if (showFeeds) {
       const box = $('feedChips');
@@ -260,10 +293,10 @@
       $('feedFacetClear').onclick = (e) => { e.preventDefault(); state.feeds.clear(); update(); };
     }
 
-    // search-query facet (posts and account results share it)
-    const searchPosts = all.filter((p) => p._source === 'search' || p._source === 'accounts');
+    // search-query facet — tallies posts in posts mode, accounts in accounts mode
+    const searchPosts = postsMode ? all.filter((p) => p._source === 'search') : accountsAll;
     const showQueries = searchPosts.length &&
-      (state.source === 'all' || state.source === 'search' || state.source === 'accounts');
+      (!postsMode || state.source === 'all' || state.source === 'search');
     $('searchFacet').hidden = !showQueries;
     if (showQueries) {
       const box = $('searchChips');
@@ -280,7 +313,7 @@
 
     // profile facet
     const profPosts = all.filter((p) => p._source === 'profile');
-    const showProf = profPosts.length && (state.source === 'all' || state.source === 'profile');
+    const showProf = postsMode && profPosts.length && (state.source === 'all' || state.source === 'profile');
     $('profFacet').hidden = !showProf;
     if (showProf) {
       const box = $('profChips');
@@ -310,7 +343,7 @@
     // top authors (within the current scope, ignoring the author filter itself)
     const scoped = all.filter(inScope);
     const authors = tally(scoped, (p) => p.author && p.author.handle).slice(0, 12);
-    const showAuthors = authors.length > 1 || state.authors.size;
+    const showAuthors = postsMode && (authors.length > 1 || state.authors.size);
     $('authorFacet').hidden = !showAuthors;
     if (showAuthors) {
       const box = $('authorChips');
@@ -975,6 +1008,30 @@
   }
   $('resetFilters').addEventListener('click', resetFilters);
 
+  // ---- Posts / Accounts mode ----
+
+  // accounts mode swaps the toolbar: post-only filters go away, the
+  // accounts sort select appears
+  function applyModeUI() {
+    const acc = state.mode === 'accounts';
+    $('mediaSel').hidden = acc;
+    document.querySelector('.dateRange').hidden = acc;
+    $('metricSel').hidden = acc;
+    $('minSel').hidden = acc;
+    $('sortSel').hidden = acc;
+    $('accSortSel').hidden = !acc;
+  }
+
+  function setMode(m) {
+    if (state.mode === m) return;
+    state.mode = m;
+    state.queries.clear(); // the facet re-tallies against the other record set
+    update();
+  }
+  $('modePosts').addEventListener('click', () => setMode('posts'));
+  $('modeAccounts').addEventListener('click', () => setMode('accounts'));
+  $('accSortSel').addEventListener('change', () => { state.accSort = $('accSortSel').value; update(); });
+
   // Filter changes jump back to the top; live data reloads keep the position.
   function update(keepScroll) {
     closeCardMenu();
@@ -1278,8 +1335,10 @@
   // put it in the filename so exports stay tellable-apart in Downloads
   function exportSuffix() {
     const one = (s) => (s.size === 1 ? [...s][0] : null);
-    let part = one(state.feeds) || one(state.queries) || one(state.handles) || one(state.authors)
-      || (state.source !== 'all' ? state.source : null);
+    let part = state.mode === 'accounts'
+      ? (one(state.queries) || 'accounts')
+      : one(state.feeds) || one(state.queries) || one(state.handles) || one(state.authors)
+        || (state.source !== 'all' ? state.source : null);
     if (!part) return '';
     part = String(part).replace(/^@/, '')
       .replace(/[^\p{L}\p{N}_-]+/gu, '-')
@@ -1306,18 +1365,16 @@
         : state.source === 'liked' ? 'liked'
           : state.source === 'search' ? 'search' : undefined;
 
-  // account records only fit the post CSV/MD shapes when viewed alone — the
-  // Accounts source exports with the account layout, mixed views export the
-  // posts and leave accounts to JSON (which keeps every record verbatim)
-  const viewPosts = () => view.filter((p) => p._source !== 'accounts');
+  // the two modes export different shapes: post layouts vs account layouts
+  const accMode = () => state.mode === 'accounts';
   $('expJson').addEventListener('click', () => download(
-    state.source === 'accounts' ? TSEExport.profilesToJSON(view) : TSEExport.toJSON(view),
+    accMode() ? TSEExport.profilesToJSON(view) : TSEExport.toJSON(view),
     'application/json', 'json'));
   $('expCsv').addEventListener('click', () => download(
-    state.source === 'accounts' ? TSEExport.profilesToCSV(view) : TSEExport.toCSV(viewPosts(), exportKind()),
+    accMode() ? TSEExport.profilesToCSV(view) : TSEExport.toCSV(view, exportKind()),
     'text/csv', 'csv'));
   $('expMd').addEventListener('click', () => download(
-    state.source === 'accounts' ? TSEExport.profilesToMarkdown(view) : TSEExport.toMarkdown(viewPosts(), exportKind()),
+    accMode() ? TSEExport.profilesToMarkdown(view) : TSEExport.toMarkdown(view, exportKind()),
     'text/markdown', 'md'));
 
   // ---- import: restore posts from earlier JSON exports ----
