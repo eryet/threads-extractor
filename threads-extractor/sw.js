@@ -8,7 +8,8 @@
 //   tse_search_posts    : { [query + '|' + id]: normalizedPost }  (search grabs)
 //   tse_search_profiles : { [query + '|' + pk]: accountRecord }   (Profiles serp)
 //   tse_search_state    : run state — see SEARCH_STATE_DEFAULTS
-//   tse_search_history  : [{query, filter, target, at, count}]  (remembered searches)
+//   tse_search_history  : [{query, filter, target, at, count}]  (search history)
+//   tse_saved_searches  : [{query, filter, target, at}]  (bookmarked searches, user-managed)
 importScripts('lib/normalize.js');
 
 let mem = null;              // in-memory mirror of storage
@@ -59,8 +60,21 @@ const PROFILE_STATE_DEFAULTS = {
 
 const SEARCH_STATE_DEFAULTS = {
   running: false,
-  query: null,               // the term being grabbed
+  query: null,               // the term being grabbed (null during a columns run)
   filter: 'recent',          // serp tab: 'recent' (chronological) | 'top' | 'profiles' (accounts)
+  extra: null,               // power-search filters: {after_date, before_date, from_author, serp_type, tag_id}
+  queue: [],                 // [{query, filter, extra}] snapshot taken at run start
+  index: 0,                  // current position in queue (sequential batch runs)
+  parallel: false,           // true: board-columns run (searches side by side)
+  counts: {},                // parallel: query -> captured count (whole run)
+  ended: {},                 // parallel: query -> has_next_page === false seen
+  orderCounters: {},         // parallel: query -> per-query order counter
+  waveQueue: [],             // parallel: searches waiting for the next wave of 4
+  seqQueue: [],              // parallel: searches columns can't express (profiles
+                             // serp, power filters) — run sequentially afterwards
+  wave: 1,                   // parallel: current wave number (1-based)
+  wavesTotal: 1,             // parallel: total waves for this run
+  waveBound: false,          // parallel: current wave's COLUMNS_INFO arrived
   target: 200,               // stop after this many results
   awaitingNav: false,
   tabId: null,
@@ -73,6 +87,36 @@ const SEARCH_STATE_DEFAULTS = {
 };
 
 const SEARCH_HISTORY_MAX = 15;
+const SAVED_SEARCHES_MAX = 50;
+const SEARCH_FILTERS = ['recent', 'top', 'profiles'];
+
+// Power-search filters (the serp's After date / Before date / From profile
+// chips, and tag serps) arrive as extra /search URL params. Whitelist and
+// normalize them; anything else from the caller is dropped.
+function cleanSearchExtra(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const out = {};
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(raw.after_date || ''))) out.after_date = String(raw.after_date);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(String(raw.before_date || ''))) out.before_date = String(raw.before_date);
+  const author = String(raw.from_author || '').replace(/^@/, '');
+  if (/^[\w.]{1,64}$/.test(author)) out.from_author = author;
+  if (raw.serp_type === 'tags' && /^\d+$/.test(String(raw.tag_id || ''))) {
+    out.serp_type = 'tags';
+    out.tag_id = String(raw.tag_id);
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+// canonical identity of a search: term + serp tab + power-search filters.
+// Used to dedupe history entries and saved-search bookmarks.
+function searchIdKey(e) {
+  const x = (e && e.extra) || {};
+  return JSON.stringify([
+    e.query, e.filter || 'recent',
+    x.after_date || '', x.before_date || '', x.from_author || '',
+    x.serp_type === 'tags' ? (x.tag_id || '') : '',
+  ]);
+}
 
 async function getStore() {
   if (!mem) {
@@ -80,6 +124,7 @@ async function getStore() {
       'tse_posts', 'tse_state', 'tse_feed_posts', 'tse_feed_state', 'tse_feed_list',
       'tse_profile_posts', 'tse_profile_state', 'tse_liked_posts', 'tse_liked_state',
       'tse_search_posts', 'tse_search_profiles', 'tse_search_state', 'tse_search_history',
+      'tse_saved_searches',
     ]);
     const SCROLL_STATE_DEFAULTS = {
       grabbing: false, hasNext: null, lastBatchAt: null, lastError: null, orderCounter: 0,
@@ -102,8 +147,13 @@ async function getStore() {
       profileState: Object.assign({}, PROFILE_STATE_DEFAULTS, got.tse_profile_state),
       searchPosts: got.tse_search_posts || {},
       searchProfiles: got.tse_search_profiles || {},
-      searchState: Object.assign({}, SEARCH_STATE_DEFAULTS, got.tse_search_state),
+      // fresh object fields so persisted pre-batch states never share (and
+      // mutate) the DEFAULTS references
+      searchState: Object.assign({}, SEARCH_STATE_DEFAULTS,
+        { queue: [], counts: {}, ended: {}, orderCounters: {}, waveQueue: [], seqQueue: [] },
+        got.tse_search_state),
       searchHistory: Array.isArray(got.tse_search_history) ? got.tse_search_history : [],
+      savedSearches: Array.isArray(got.tse_saved_searches) ? got.tse_saved_searches : [],
     };
   }
   return mem;
@@ -120,6 +170,7 @@ function persist() {
       tse_search_posts: mem.searchPosts, tse_search_profiles: mem.searchProfiles,
       tse_search_state: mem.searchState,
       tse_search_history: mem.searchHistory,
+      tse_saved_searches: mem.savedSearches,
     }).then(
       () => { storageFull = false; },
       () => {
@@ -339,8 +390,23 @@ async function finishProfile(store) {
 // ---- search run driving (one query, one page, scroll to target) ----
 
 function searchPath(st) {
-  const f = st.filter === 'recent' || st.filter === 'profiles' ? '&filter=' + st.filter : '';
-  return '/search?q=' + encodeURIComponent(st.query) + f; // 'top' = no filter param
+  const p = new URLSearchParams();
+  p.set('q', st.query);
+  const x = st.extra || null;
+  if (x) {
+    if (x.after_date) p.set('after_date', x.after_date);
+    if (x.before_date) p.set('before_date', x.before_date);
+    if (x.from_author) p.set('from_author', x.from_author);
+    // the serp only applies power-search filters under a serp_type
+    if (x.serp_type === 'tags' && x.tag_id) {
+      p.set('serp_type', 'tags');
+      p.set('tag_id', x.tag_id);
+    } else {
+      p.set('serp_type', 'default');
+    }
+  }
+  if (st.filter === 'recent' || st.filter === 'profiles') p.set('filter', st.filter);
+  return '/search?' + p.toString(); // 'top' = no filter param
 }
 
 async function navigateToSearch(store) {
@@ -363,24 +429,137 @@ async function finishSearch(store) {
   const wasRunning = st.running;
   st.running = false;
   st.awaitingNav = false;
+  st.waveQueue = [];
+  st.seqQueue = [];
   maybeClearWatchdog(store);
   if (st.tabId != null) {
     chrome.tabs.sendMessage(st.tabId, { type: 'STOP_SCROLL' }).catch(() => {});
   }
-  // remembered searches: stamp the final count on this query's history entry
-  if (wasRunning && st.query) {
-    const h = store.searchHistory.find((e) => e.query === st.query);
-    if (h) h.count = st.curCount;
+  // search history: stamp the final count(s) on the finished entries
+  if (wasRunning) {
+    if (st.parallel) stampWaveCounts(store, st);
+    else stampSearchCount(store, st);
   }
   await persist();
 }
 
-// keep a small most-recent-first history of grabbed searches (one entry per
-// query — a re-grab moves it to the top and refreshes its settings)
+function stampSearchCount(store, st) {
+  if (!st.query) return;
+  const k = searchIdKey(st);
+  const h = store.searchHistory.find((e) => e && searchIdKey(e) === k);
+  if (h) h.count = st.curCount;
+}
+
+// parallel runs: stamp the current wave's per-query counts on history
+function stampWaveCounts(store, st) {
+  for (const it of st.queue || []) {
+    const k = searchIdKey(it);
+    const h = store.searchHistory.find((e) => e && searchIdKey(e) === k);
+    if (h) h.count = st.counts[it.query] || 0;
+  }
+}
+
+// parallel runs: searches that hit their target or ran out of results
+function parallelSearchDone(st) {
+  return (st.queue || [])
+    .filter((i) => (st.counts[i.query] || 0) >= st.target || st.ended[i.query])
+    .map((i) => i.query);
+}
+
+// column specs handed to the content script (board columns can only express
+// the Top/Recent serp tabs — profiles/power-filter searches never get here)
+function searchColSpecs(items) {
+  return items.map((i) => ({
+    kind: 'search',
+    query: i.query,
+    filter: i.filter === 'recent' ? 'recent' : 'top',
+  }));
+}
+
+// batch waves: the current wave's columns are done — hand the next 4 searches
+// to the content script, fall through to the sequential remainder (profiles /
+// power-filter searches), or close out.
+async function advanceSearchWave(store) {
+  const st = store.searchState;
+  if (!st.running || !st.parallel) return;
+  stampWaveCounts(store, st);
+  if ((st.waveQueue || []).length) {
+    st.queue = st.waveQueue.slice(0, 4);
+    st.waveQueue = st.waveQueue.slice(4);
+    st.wave = (st.wave || 1) + 1;
+    st.ended = {};
+    st.waveBound = false;
+    touchProgress(st);
+    await persist();
+    try {
+      await chrome.tabs.sendMessage(st.tabId, { type: 'NEXT_WAVE', cols: searchColSpecs(st.queue) });
+    } catch (e) {
+      st.lastError = 'Lost the Threads tab between batch waves.';
+      await finishSearch(store);
+    }
+    return;
+  }
+  if ((st.seqQueue || []).length) {
+    // columns are done — run the searches the board can't express one by one
+    // on the /search page. Tear the added columns down BEFORE navigating away
+    // (the response arrives only after removal), or they'd stay pinned.
+    try { await chrome.tabs.sendMessage(st.tabId, { type: 'TEARDOWN_COLUMNS' }); } catch (_) {}
+    st.parallel = false;
+    st.queue = st.seqQueue;
+    st.seqQueue = [];
+    st.index = 0;
+    const next = st.queue[0];
+    st.query = next.query;
+    st.filter = next.filter;
+    st.extra = next.extra || null;
+    st.curCount = 0;
+    st.hasNext = null;
+    rememberSearch(store, st);
+    await navigateToSearch(store); // persists
+    return;
+  }
+  await finishSearch(store);
+}
+
+// batch runs: the current query is done — move to the next queued search, or
+// close out. Single searches carry a one-entry queue, so this is the shared
+// "query finished" path for every search stop except a user STOP.
+async function advanceSearch(store) {
+  const st = store.searchState;
+  if (!st.running || st.index + 1 >= (st.queue || []).length) {
+    await finishSearch(store);
+    return;
+  }
+  stampSearchCount(store, st);
+  st.index++;
+  const next = st.queue[st.index];
+  st.query = next.query;
+  st.filter = SEARCH_FILTERS.includes(next.filter) ? next.filter : 'recent';
+  st.extra = next.extra || null;
+  st.curCount = 0;
+  st.hasNext = null;
+  rememberSearch(store, st);
+  await navigateToSearch(store); // persists
+}
+
+// a re-grab replaces only this query's earlier snapshot (posts AND accounts),
+// so different searches accumulate and export together
+function clearSearchSnapshot(store, query) {
+  const prefix = query + '|';
+  for (const bucket of [store.searchPosts, store.searchProfiles]) {
+    for (const k of Object.keys(bucket)) {
+      if (k.startsWith(prefix)) delete bucket[k];
+    }
+  }
+}
+
+// keep a small most-recent-first search history (one entry per search
+// identity — a re-grab moves it to the top and refreshes its settings)
 function rememberSearch(store, st) {
-  store.searchHistory = store.searchHistory.filter((e) => e && e.query !== st.query);
+  const k = searchIdKey(st);
+  store.searchHistory = store.searchHistory.filter((e) => e && searchIdKey(e) !== k);
   store.searchHistory.unshift({
-    query: st.query, filter: st.filter, target: st.target,
+    query: st.query, filter: st.filter, extra: st.extra || null, target: st.target,
     at: new Date().toISOString(), count: null,
   });
   while (store.searchHistory.length > SEARCH_HISTORY_MAX) store.searchHistory.pop();
@@ -617,6 +796,7 @@ async function handleSearchBatch(msg, sender) {
   if (sender && sender.tab && st.tabId != null && sender.tab.id !== st.tabId) {
     return { added: 0, count: total() };
   }
+  if (st.parallel) return handleSearchColumnsBatch(store, msg);
   // the request variables name the query — drop batches for anything else
   // (e.g. the user typing a new search into the box mid-run)
   if (msg.searchQuery && msg.searchQuery !== st.query) return { added: 0, count: total() };
@@ -646,11 +826,52 @@ async function handleSearchBatch(msg, sender) {
   st.lastBatchAt = now;
   touchProgress(st);
   if (st.curCount >= st.target || st.hasNext === false) {
-    await finishSearch(store);                     // persists + STOP_SCROLL
+    await advanceSearch(store);                    // next queued search, or finish
   } else {
     await persist();
   }
   return { added, count: total() };
+}
+
+// Board-columns run: several searches paginate at once in the same tab, so
+// attribution comes from msg.searchQuery (derived from the request variables
+// by inject.js) instead of "the query we navigated to".
+async function handleSearchColumnsBatch(store, msg) {
+  const st = store.searchState;
+  const total = () => Object.keys(store.searchPosts).length;
+  const q = msg.searchQuery;
+  const item = q && st.queue.find((i) => i.query === q);
+  if (!item) return { added: 0, count: total(), doneKeys: parallelSearchDone(st) };
+
+  const now = new Date().toISOString();
+  let added = 0, bad = 0;
+  for (const raw of msg.posts || []) {
+    if ((st.counts[q] || 0) >= st.target) break;
+    try {
+      const p = self.TSENormalize.normalizePost(raw, now);
+      if (!p) continue;
+      const key = q + '|' + p.id;
+      if (store.searchPosts[key]) continue;
+      p.searchQuery = q;
+      p.searchFilter = item.filter;
+      p.searchOrder = (st.orderCounters[q] = (st.orderCounters[q] || 0) + 1);
+      attachReplyTo(p, raw, now);
+      store.searchPosts[key] = p;
+      st.counts[q] = (st.counts[q] || 0) + 1;
+      added++;
+    } catch (e) { bad++; }
+  }
+  if (bad) logError('normalize:search-columns', bad + ' post(s) failed to parse — skipped');
+  if (msg.pageInfo && msg.pageInfo.has_next_page === false) st.ended[q] = true;
+  st.lastBatchAt = now;
+  touchProgress(st);
+  const done = parallelSearchDone(st);
+  if (st.queue.length && done.length >= st.queue.length) {
+    await advanceSearchWave(store);
+  } else {
+    await persist();
+  }
+  return { added, count: total(), doneKeys: done };
 }
 
 // Profiles serp: user results (accounts), not posts — stored as flat account
@@ -660,7 +881,7 @@ async function handleSearchUsersBatch(msg, sender) {
   const store = await getStore();
   const st = store.searchState;
   const total = () => Object.keys(store.searchProfiles).length;
-  if (!st.running || st.awaitingNav) return { added: 0, count: total() };
+  if (!st.running || st.awaitingNav || st.parallel) return { added: 0, count: total() };
   if (sender && sender.tab && st.tabId != null && sender.tab.id !== st.tabId) {
     return { added: 0, count: total() };
   }
@@ -697,7 +918,7 @@ async function handleSearchUsersBatch(msg, sender) {
   st.lastBatchAt = now;
   touchProgress(st);
   if (st.curCount >= st.target || st.hasNext === false) {
-    await finishSearch(store);                     // persists + STOP_SCROLL
+    await advanceSearch(store);                    // next queued search, or finish
   } else {
     await persist();
   }
@@ -747,6 +968,18 @@ async function handleContentReady(msg, sender) {
   // msg.path does not carry — the batch handler verifies it per batch)
   const ss = store.searchState;
   if (ss.running && tabId === ss.tabId) {
+    if (ss.parallel) {
+      // columns run: the board home reached?
+      if (ss.awaitingNav && normPath(msg.path) === '/') {
+        ss.awaitingNav = false;
+        touchProgress(ss);
+        await persist();
+        chrome.tabs.sendMessage(tabId, {
+          type: 'START_SCROLL', mode: 'columns', cols: searchColSpecs(ss.queue),
+        }).catch(() => {});
+      }
+      return;
+    }
     if (normPath(msg.path) === '/search') {
       ss.awaitingNav = false;
       touchProgress(ss);
@@ -805,8 +1038,21 @@ async function watchdogTick(alarm) {
   if (ss.running) {
     const last = Date.parse(ss.lastProgressAt || '') || 0;
     if (Date.now() - last > STALL_MS) {
-      ss.lastError = 'search stalled — stopped (keep the tab visible)';
-      await finishSearch(store);
+      if (ss.parallel) {
+        // columns all paginate at once — a stall means this wave is stuck
+        const more = (ss.waveQueue || []).length || (ss.seqQueue || []).length;
+        ss.lastError = more
+          ? 'batch wave stalled — skipped to the next wave'
+          : 'columns run stalled — stopped (keep the tab visible)';
+        await advanceSearchWave(store);
+      } else {
+        // batch runs skip to the next queued search instead of hanging forever
+        const more = ss.index + 1 < (ss.queue || []).length;
+        ss.lastError = more
+          ? `"${ss.query}" stalled — skipped`
+          : 'search stalled — stopped (keep the tab visible)';
+        await advanceSearch(store);
+      }
     }
   }
 }
@@ -901,7 +1147,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           feedList: store.feedList.feeds,
           search: (() => {
             const ss = store.searchState;
-            // per-query tallies (posts + accounts) for the remembered list
+            // per-query tallies (posts + accounts) for the history list
             const byQuery = {};
             for (const bucket of [store.searchPosts, store.searchProfiles]) {
               for (const p of Object.values(bucket)) {
@@ -915,11 +1161,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
               running: ss.running,
               query: ss.query,
               filter: ss.filter,
+              extra: ss.extra || null,
+              queueLen: (ss.queue || []).length,
+              queueIndex: ss.index || 0,
+              parallel: !!ss.parallel,
+              wave: ss.wave || 1,
+              wavesTotal: ss.wavesTotal || 1,
+              waveQueueLen: (ss.waveQueue || []).length,
+              seqQueueLen: (ss.seqQueue || []).length,
+              doneCount: ss.parallel ? parallelSearchDone(ss).length : 0,
+              runCount: ss.parallel
+                ? Object.values(ss.counts || {}).reduce((a, b) => a + b, 0)
+                : ss.curCount,
+              // searches actively being grabbed right now (all of them in a
+              // columns run, just the current one sequentially)
+              activeKeys: !ss.running ? []
+                : ss.parallel
+                  ? (ss.queue || [])
+                      .filter((i) => (ss.counts[i.query] || 0) < ss.target && !ss.ended[i.query])
+                      .map(searchIdKey)
+                  : [searchIdKey(ss)],
               target: ss.target,
               curCount: ss.curCount,
               hasNext: ss.hasNext,
               queries: byQuery,
               history: store.searchHistory,
+              saved: store.savedSearches,
               lastError: ss.lastError,
             };
           })(),
@@ -1087,6 +1354,27 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
 
       case 'COLUMNS_INFO': { // content script reporting the columns it actually bound
+        if (store.searchState.running && store.searchState.parallel) {
+          const ss = store.searchState;
+          const bound = new Set(
+            (msg.cols || []).filter((c) => c && c.kind === 'search' && c.query).map((c) => c.query));
+          const missing = ss.queue.filter((i) => !bound.has(i.query));
+          ss.queue = ss.queue.filter((i) => bound.has(i.query));
+          ss.waveBound = true;
+          if (!ss.queue.length) {
+            ss.lastError = 'Could not open any search columns on the board.';
+            await advanceSearchWave(store); // next wave, seq remainder, or finish
+            sendResponse({ ok: false, error: ss.lastError });
+            break;
+          }
+          if (missing.length) {
+            ss.lastError = `couldn't open: ${missing.map((i) => i.query).join(', ')}`;
+          }
+          touchProgress(ss);
+          await persist();
+          sendResponse({ ok: true, target: ss.target });
+          break;
+        }
         const st = store.feedState;
         if (!st.running || !st.parallel) { sendResponse({ ok: false }); break; }
         const bound = new Set(
@@ -1180,18 +1468,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           sendResponse({ ok: false, error: store.searchState.lastError });
           break;
         }
-        // a re-grab replaces only this query's earlier snapshot (posts AND
-        // accounts), so different searches accumulate and export together
-        const prefix = query + '|';
-        for (const bucket of [store.searchPosts, store.searchProfiles]) {
-          for (const k of Object.keys(bucket)) {
-            if (k.startsWith(prefix)) delete bucket[k];
-          }
-        }
+        clearSearchSnapshot(store, query);
+        const filter = SEARCH_FILTERS.includes(msg.filter) ? msg.filter : 'recent';
+        const extra = cleanSearchExtra(msg.extra);
         store.searchState = Object.assign({}, SEARCH_STATE_DEFAULTS, {
           running: true,
           query,
-          filter: ['recent', 'top', 'profiles'].includes(msg.filter) ? msg.filter : 'recent',
+          filter,
+          extra,
+          queue: [{ query, filter, extra }],
+          index: 0,
           target: Math.max(1, Math.min(2000, Number(msg.target) || 200)),
           tabId: tab.id,
         });
@@ -1202,6 +1488,208 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         store.profileState.running = false;
         chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
         await navigateToSearch(store); // persists
+        sendResponse({ ok: true });
+        break;
+      }
+
+      case 'START_SEARCH_BATCH': { // saved searches, one after another
+        const seen = new Set();
+        const items = (Array.isArray(msg.items) ? msg.items : [])
+          .map((i) => i && ({
+            query: String(i.query || '').trim(),
+            filter: SEARCH_FILTERS.includes(i.filter) ? i.filter : 'recent',
+            extra: cleanSearchExtra(i.extra),
+          }))
+          .filter((i) => {
+            if (!i || !i.query) return false;
+            const k = searchIdKey(i);
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+        if (!items.length) {
+          sendResponse({ ok: false, error: 'No searches selected.' });
+          break;
+        }
+        const tab = await findThreadsTab();
+        if (!tab) {
+          store.searchState.lastError = 'No threads.com tab found — open threads.com first.';
+          await persist();
+          sendResponse({ ok: false, error: store.searchState.lastError });
+          break;
+        }
+        // clear every queued query's earlier snapshot up front — clearing on
+        // advance would wipe an earlier grab of the same query on another tab
+        for (const q of new Set(items.map((i) => i.query))) clearSearchSnapshot(store, q);
+        store.searchState = Object.assign({}, SEARCH_STATE_DEFAULTS, {
+          running: true,
+          query: items[0].query,
+          filter: items[0].filter,
+          extra: items[0].extra,
+          queue: items,
+          index: 0,
+          target: Math.max(1, Math.min(2000, Number(msg.target) || 200)),
+          tabId: tab.id,
+        });
+        rememberSearch(store, store.searchState);
+        store.state.grabbing = false;      // modes share one scroll loop
+        store.likedState.grabbing = false;
+        store.feedState.running = false;
+        store.profileState.running = false;
+        chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
+        await navigateToSearch(store); // persists
+        sendResponse({ ok: true });
+        break;
+      }
+
+      case 'START_SEARCH_COLUMNS': { // board columns: checked searches, 4 at a time
+        const seen = new Set();
+        const items = (Array.isArray(msg.items) ? msg.items : [])
+          .map((i) => i && ({
+            query: String(i.query || '').trim(),
+            filter: SEARCH_FILTERS.includes(i.filter) ? i.filter : 'recent',
+            extra: cleanSearchExtra(i.extra),
+          }))
+          .filter((i) => {
+            if (!i || !i.query) return false;
+            const k = searchIdKey(i);
+            if (seen.has(k)) return false;
+            seen.add(k);
+            return true;
+          });
+        if (!items.length) {
+          sendResponse({ ok: false, error: 'No searches selected.' });
+          break;
+        }
+        const tab = await findThreadsTab();
+        if (!tab) {
+          store.searchState.lastError = 'No threads.com tab found — open threads.com first.';
+          await persist();
+          sendResponse({ ok: false, error: store.searchState.lastError });
+          break;
+        }
+        // Board columns can only express the Top/Recent serp tabs, and batches
+        // are attributed by query text — so profiles-serp searches, power-
+        // filtered searches, and same-query duplicates run sequentially after
+        // the waves instead.
+        const parallelItems = [], seqItems = [], seenQ = new Set();
+        for (const i of items) {
+          if (i.filter !== 'profiles' && !i.extra && !seenQ.has(i.query)) {
+            seenQ.add(i.query);
+            parallelItems.push(i);
+          } else {
+            seqItems.push(i);
+          }
+        }
+        for (const q of new Set(items.map((i) => i.query))) clearSearchSnapshot(store, q);
+        const target = Math.max(1, Math.min(2000, Number(msg.target) || 200));
+        store.state.grabbing = false;      // modes share one scroll loop
+        store.likedState.grabbing = false;
+        store.feedState.running = false;
+        store.profileState.running = false;
+        chrome.alarms.create(WATCHDOG, { periodInMinutes: 0.5 });
+        if (!parallelItems.length) {
+          // nothing the board can run — plain sequential batch
+          store.searchState = Object.assign({}, SEARCH_STATE_DEFAULTS, {
+            running: true,
+            query: seqItems[0].query,
+            filter: seqItems[0].filter,
+            extra: seqItems[0].extra,
+            queue: seqItems,
+            index: 0,
+            target,
+            tabId: tab.id,
+          });
+          rememberSearch(store, store.searchState);
+          await navigateToSearch(store); // persists
+          sendResponse({ ok: true });
+          break;
+        }
+        store.searchState = Object.assign({}, SEARCH_STATE_DEFAULTS, {
+          running: true,
+          parallel: true,
+          query: null,
+          queue: parallelItems.slice(0, 4),
+          waveQueue: parallelItems.slice(4),
+          seqQueue: seqItems,
+          wave: 1,
+          wavesTotal: Math.ceil(parallelItems.length / 4),
+          waveBound: false,
+          target,
+          tabId: tab.id,
+          counts: {},
+          ended: {},
+          orderCounters: {},
+        });
+        // seed history entries now (sequential runs remember as they go)
+        for (const it of [...parallelItems].reverse()) {
+          rememberSearch(store, Object.assign({ target }, it));
+        }
+        let onBoard = false;
+        try { onBoard = normPath(new URL(tab.url || '').pathname) === '/'; } catch (_) {}
+        if (onBoard) {
+          touchProgress(store.searchState);
+          await persist();
+          try {
+            await chrome.tabs.sendMessage(tab.id, {
+              type: 'START_SCROLL', mode: 'columns', cols: searchColSpecs(store.searchState.queue),
+            });
+          } catch (e) {
+            store.searchState.running = false;
+            store.searchState.lastError = 'Could not reach the Threads tab — reload it and try again.';
+            await persist();
+            sendResponse({ ok: false, error: store.searchState.lastError });
+            break;
+          }
+        } else {
+          store.searchState.awaitingNav = true;
+          touchProgress(store.searchState);
+          await persist();
+          try {
+            await chrome.tabs.update(tab.id, { url: 'https://www.threads.com/' });
+          } catch (e) {
+            store.searchState.lastError = 'Lost the Threads tab.';
+            await finishSearch(store);
+            sendResponse({ ok: false, error: store.searchState.lastError });
+            break;
+          }
+        }
+        sendResponse({ ok: true });
+        break;
+      }
+
+      case 'SAVE_SEARCH': { // bookmark a search for later batch grabs
+        const query = String(msg.query || '').trim();
+        if (!query) {
+          sendResponse({ ok: false, error: 'No search query.' });
+          break;
+        }
+        const filter = SEARCH_FILTERS.includes(msg.filter) ? msg.filter : 'recent';
+        const entry = {
+          query, filter,
+          extra: cleanSearchExtra(msg.extra),
+          target: Math.max(1, Math.min(2000, Number(msg.target) || 200)),
+          at: new Date().toISOString(),
+        };
+        // one entry per search identity — re-saving moves it to the top and
+        // refreshes its target
+        const k = searchIdKey(entry);
+        store.savedSearches = store.savedSearches.filter((e) => e && searchIdKey(e) !== k);
+        store.savedSearches.unshift(entry);
+        while (store.savedSearches.length > SAVED_SEARCHES_MAX) store.savedSearches.pop();
+        await persist();
+        sendResponse({ ok: true });
+        break;
+      }
+
+      case 'UNSAVE_SEARCH': {
+        const k = searchIdKey({
+          query: String(msg.query || '').trim(),
+          filter: SEARCH_FILTERS.includes(msg.filter) ? msg.filter : 'recent',
+          extra: cleanSearchExtra(msg.extra),
+        });
+        store.savedSearches = store.savedSearches.filter((e) => e && searchIdKey(e) !== k);
+        await persist();
         sendResponse({ ok: true });
         break;
       }
@@ -1247,6 +1735,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 if ((st.waveQueue || []).length) await startNextWave(store);
                 else await finishRun(store);
               }
+            } else if (store.searchState.running && store.searchState.parallel && msg.state === 'done' &&
+                sender && sender.tab && sender.tab.id === store.searchState.tabId) {
+              const st = store.searchState;
+              const stale = !st.waveBound && (st.wave || 1) > 1 &&
+                msg.reason === 'all columns finished';
+              if (!stale) await advanceSearchWave(store);
             }
           } else if (msg.mode === 'profile') {
             if (store.profileState.running && !store.profileState.awaitingNav && msg.state === 'done' &&
@@ -1256,7 +1750,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           } else if (msg.mode === 'search') {
             if (store.searchState.running && !store.searchState.awaitingNav && msg.state === 'done' &&
                 sender && sender.tab && sender.tab.id === store.searchState.tabId) {
-              await finishSearch(store);
+              await advanceSearch(store);
             }
           } else if (msg.mode === 'liked') {
             store.likedState.grabbing = false;
@@ -1389,9 +1883,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         } else if (msg.mode === 'search') {
           store.searchPosts = {};
           store.searchProfiles = {};
-          store.searchState = Object.assign({}, SEARCH_STATE_DEFAULTS);
-          // the remembered-searches list survives a data clear on purpose —
-          // it's the user's shortcuts, not captured data
+          store.searchState = Object.assign({}, SEARCH_STATE_DEFAULTS,
+            { queue: [], counts: {}, ended: {}, orderCounters: {}, waveQueue: [], seqQueue: [] });
+          // the search-history and saved-searches lists survive a data clear
+          // on purpose — they're the user's shortcuts, not captured data
         } else {
           store.posts = {};
           store.state.orderCounter = 0;

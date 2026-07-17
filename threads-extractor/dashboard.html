@@ -18,6 +18,8 @@
       --ok: #3ddc84;
     }
     * { box-sizing: border-box; }
+    /* author display rules (flex/grid) must not override the hidden attr */
+    [hidden] { display: none !important; }
     html, body { height: 100%; }
     body {
       margin: 0;

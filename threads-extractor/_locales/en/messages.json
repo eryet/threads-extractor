@@ -381,13 +381,58 @@
     "message": "Clear search data"
   },
   "hint_search": {
-    "message": "runs the search in your Threads tab and captures results while it scrolls · re-grabbing a query replaces its earlier snapshot · keep the tab visible"
+    "message": "runs the search in your Threads tab while it scrolls · keep the tab visible"
+  },
+  "hint_save_empty": {
+    "message": "star ☆ a search to keep it here for batch grabs"
+  },
+  "lbl_filters": {
+    "message": "filters"
+  },
+  "flt_after": {
+    "message": "after {d}"
+  },
+  "flt_before": {
+    "message": "before {d}"
   },
   "pick_search_history": {
-    "message": "Remembered searches"
+    "message": "History"
   },
   "hist_rerun": {
     "message": "Grab this search again"
+  },
+  "pick_saved_searches": {
+    "message": "Saved searches"
+  },
+  "hint_search_batch": {
+    "message": "batch opens checked searches as board columns, 4 at a time (clearing leftover search columns first) · account & filtered searches run one by one after · each replaces its earlier snapshot"
+  },
+  "st_search_wave": {
+    "message": "batch {w}/{ws} — {done}/{n} searches done · {count} results total"
+  },
+  "st_search_cols_progress": {
+    "message": "board columns — {done}/{n} searches done · {count} results"
+  },
+  "st_search_cols_finding": {
+    "message": "board columns — opening search columns…"
+  },
+  "st_search_batch_progress": {
+    "message": "search {i} of {n} — “{q}” · {cur}/{target}"
+  },
+  "save_search": {
+    "message": "Save this search for later"
+  },
+  "unsave_search": {
+    "message": "Remove from saved searches"
+  },
+  "tagf_recent": {
+    "message": "recent"
+  },
+  "tagf_top": {
+    "message": "top"
+  },
+  "tagf_profiles": {
+    "message": "accounts"
   },
   "st_search_progress": {
     "message": "“{q}” — {cur} / {target}"

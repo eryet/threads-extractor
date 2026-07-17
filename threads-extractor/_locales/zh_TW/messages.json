@@ -381,13 +381,58 @@
     "message": "清除搜尋資料"
   },
   "hint_search": {
-    "message": "會在你的 Threads 分頁執行搜尋並邊捲動邊擷取結果 · 重新擷取同一關鍵字會取代先前的快照 · 請保持分頁可見"
+    "message": "會在你的 Threads 分頁執行搜尋並邊捲動邊擷取 · 請保持分頁可見"
+  },
+  "hint_save_empty": {
+    "message": "按 ☆ 儲存搜尋，即可在這裡批次擷取"
+  },
+  "lbl_filters": {
+    "message": "篩選"
+  },
+  "flt_after": {
+    "message": "{d} 之後"
+  },
+  "flt_before": {
+    "message": "{d} 之前"
   },
   "pick_search_history": {
-    "message": "記住的搜尋"
+    "message": "搜尋紀錄"
   },
   "hist_rerun": {
     "message": "再次擷取這個搜尋"
+  },
+  "pick_saved_searches": {
+    "message": "已儲存的搜尋"
+  },
+  "hint_search_batch": {
+    "message": "批次會以看板欄位並排開啟已勾選的搜尋，每批 4 個（會先清除殘留的搜尋欄位）· 帳號與有篩選條件的搜尋會在之後依序執行 · 各自取代先前的快照"
+  },
+  "st_search_wave": {
+    "message": "第 {w}/{ws} 批 — {done}/{n} 個搜尋完成 · 共 {count} 筆結果"
+  },
+  "st_search_cols_progress": {
+    "message": "看板欄位 — {done}/{n} 個搜尋完成 · {count} 筆結果"
+  },
+  "st_search_cols_finding": {
+    "message": "看板欄位 — 開啟搜尋欄位中…"
+  },
+  "st_search_batch_progress": {
+    "message": "第 {i}/{n} 個搜尋 —「{q}」· {cur}/{target}"
+  },
+  "save_search": {
+    "message": "儲存這個搜尋以便日後使用"
+  },
+  "unsave_search": {
+    "message": "從已儲存的搜尋移除"
+  },
+  "tagf_recent": {
+    "message": "最新"
+  },
+  "tagf_top": {
+    "message": "熱門"
+  },
+  "tagf_profiles": {
+    "message": "帳號"
   },
   "st_search_progress": {
     "message": "「{q}」— {cur} / {target}"

@@ -41,9 +41,14 @@
     searchCount: $('searchCount'), searchStatus: $('searchStatus'),
     searchBar: $('searchBar'), searchBarFill: $('searchBarFill'),
     searchQuery: $('searchQuery'), searchTarget: $('searchTarget'), searchFilter: $('searchFilter'),
-    searchDetected: $('searchDetected'),
+    searchDetected: $('searchDetected'), searchSave: $('btnSearchSave'),
+    searchExtraRow: $('searchExtraRow'), searchExtraTxt: $('searchExtraTxt'), searchExtraClear: $('searchExtraClear'),
     searchStart: $('btnSearchStart'), searchStop: $('btnSearchStop'),
     searchHistHead: $('searchHistHead'), searchHistory: $('searchHistory'),
+    ssHead: $('ssHead'), ssList: $('savedSearches'), ssSelCount: $('ssSelCount'),
+    ssSelAll: $('ssSelAll'), ssSelNone: $('ssSelNone'), ssLinks: $('ssLinks'), ssEmpty: $('ssEmpty'),
+    searchBatch: $('btnSearchBatch'), searchCols: $('btnSearchCols'),
+    ssHint: $('ssHint'), searchExpHead: $('searchExpHead'),
     searchJson: $('btnSearchJson'), searchCsv: $('btnSearchCsv'), searchMd: $('btnSearchMd'),
     searchAccHead: $('searchAccHead'), searchAccRow: $('searchAccRow'),
     searchAccJson: $('btnSearchAccJson'), searchAccCsv: $('btnSearchAccCsv'), searchAccMd: $('btnSearchAccMd'),
@@ -61,6 +66,7 @@
 
   let pollTimer = null;
   let selected = new Set();       // feed URLs the user ticked
+  let ssSelected = new Set();     // saved-search keys (query|filter) the user ticked
   let renderedListKey = null;     // avoid rebuilding the picker every poll
   let lastState = null;
   let tabbedOnce = false;         // auto-focus the busy tab only on first poll
@@ -358,17 +364,44 @@
     const hasSearch = (sr.count || 0) > 0;
     els.searchStart.disabled = busy;
     els.searchStop.disabled = !sr.running;
+    // Stop swaps into Grab's slot only while a run is live — no dead button
+    els.searchStart.hidden = !!sr.running;
+    els.searchStop.hidden = !sr.running;
     els.searchQuery.disabled = els.searchTarget.disabled = els.searchFilter.disabled = !!sr.running;
     els.searchJson.disabled = els.searchCsv.disabled = els.searchMd.disabled = !hasSearch;
     els.searchAccHead.hidden = els.searchAccRow.hidden = !accCount;
     els.searchClear.disabled = (!hasSearch && !accCount) || !!sr.running;
     els.searchBar.classList.toggle('on', !!sr.running);
-    if (sr.running) {
-      els.searchBarFill.style.width =
-        Math.round(Math.min(1, (sr.curCount || 0) / (sr.target || 1)) * 100) + '%';
-      setStatus(els.searchStatus, t('st_search_progress', {
-        q: sr.query || '…', cur: sr.curCount || 0, target: sr.target || 0,
-      }));
+    if (sr.running && sr.parallel) {
+      const qLen = sr.queueLen || 0;
+      // progress across ALL waves + the sequential remainder
+      const totalSearches = qLen + (sr.waveQueueLen || 0) + ((sr.wave || 1) - 1) * 4 + (sr.seqQueueLen || 0);
+      const overall = totalSearches
+        ? Math.min(1, (sr.runCount || 0) / ((sr.target || 1) * totalSearches)) : 0;
+      els.searchBarFill.style.width = Math.round(overall * 100) + '%';
+      const waves = (sr.wavesTotal || 1) > 1 || (sr.seqQueueLen || 0) > 0;
+      setStatus(els.searchStatus, qLen
+        ? (waves
+          ? t('st_search_wave', { w: sr.wave || 1, ws: sr.wavesTotal, done: sr.doneCount || 0, n: qLen, count: sr.runCount || 0 })
+          : t('st_search_cols_progress', { done: sr.doneCount || 0, n: qLen, count: sr.runCount || 0 }))
+        : t('st_search_cols_finding'));
+    } else if (sr.running) {
+      const qn = sr.queueLen || 1;
+      const inQuery = Math.min(1, (sr.curCount || 0) / (sr.target || 1));
+      if (qn > 1) {
+        // batch run: bar spans the whole queue, status names the position
+        els.searchBarFill.style.width =
+          Math.round(Math.min(1, ((sr.queueIndex || 0) + inQuery) / qn) * 100) + '%';
+        setStatus(els.searchStatus, t('st_search_batch_progress', {
+          i: (sr.queueIndex || 0) + 1, n: qn, q: sr.query || '…',
+          cur: sr.curCount || 0, target: sr.target || 0,
+        }));
+      } else {
+        els.searchBarFill.style.width = Math.round(inQuery * 100) + '%';
+        setStatus(els.searchStatus, t('st_search_progress', {
+          q: sr.query || '…', cur: sr.curCount || 0, target: sr.target || 0,
+        }));
+      }
     } else if (sr.lastError) {
       setStatus(els.searchStatus, terr(sr.lastError), true);
     } else if (hasSearch || accCount) {
@@ -380,7 +413,9 @@
     } else {
       setStatus(els.searchStatus, t('st_search_ready'));
     }
+    renderSavedSearches(sr, busy);
     renderSearchHistory(sr, busy);
+    refreshSaveStar();
 
     // ---- storage meter ----
     const sg = state.storage || {};
@@ -401,19 +436,176 @@
     }
   }
 
-  // ---- remembered searches (history rows: click fills the form, ▶ re-runs) ----
+  // ---- saved searches (bookmarks: tick rows, then batch-grab them in turn) ----
+  // row-button icons (Feather-style paths); colored via the .hgo.* CSS classes
+  const SVG_ICON = {
+    star: '<svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>',
+    play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+    x: '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  };
+  const SS_TAGS = { recent: 'tagf_recent', top: 'tagf_top', profiles: 'tagf_profiles' };
+  // identity key — must mirror the SW's searchIdKey()
+  const ssKey = (e) => {
+    const x = (e && e.extra) || {};
+    return JSON.stringify([
+      e.query, e.filter || 'recent',
+      x.after_date || '', x.before_date || '', x.from_author || '',
+      x.serp_type === 'tags' ? (x.tag_id || '') : '',
+    ]);
+  };
+  // color-coded chips for a search's serp tab + power-search filters.
+  // 'recent' is the default tab, so it gets no chip — only deviations show.
+  function filterChips(filter, extra) {
+    const chips = [];
+    if (filter && filter !== 'recent') chips.push({ cls: 'tab', text: t(SS_TAGS[filter]) });
+    const x = extra || {};
+    if (x.after_date) chips.push({ cls: 'after', text: t('flt_after', { d: x.after_date }) });
+    if (x.before_date) chips.push({ cls: 'before', text: t('flt_before', { d: x.before_date }) });
+    if (x.from_author) chips.push({ cls: 'author', text: '@' + x.from_author });
+    if (x.serp_type === 'tags') chips.push({ cls: 'tag', text: '#tag' });
+    return chips;
+  }
+  function chipsEl(chips) {
+    const wrap = document.createElement('div');
+    wrap.className = 'chips';
+    for (const c of chips) {
+      const s = document.createElement('span');
+      s.className = 'chip ' + c.cls;
+      s.textContent = c.text;
+      wrap.appendChild(s);
+    }
+    return wrap;
+  }
+  // older history entries stored a boolean `recent` instead of `filter`
+  const histFilter = (h) => h.filter || (h.recent === false ? 'top' : 'recent');
+  const savedList = () => ((lastState && lastState.search && lastState.search.saved) || []);
+
+  function refreshSsControls(busy) {
+    const selCount = savedList().filter((e) => ssSelected.has(ssKey(e))).length;
+    els.ssSelCount.textContent = selCount ? t('sel_count', { n: selCount }) : '';
+    els.searchBatch.disabled = els.searchCols.disabled = busy || !selCount;
+  }
+
+  let renderedSavedKey = null;
+  function renderSavedSearches(sr, busy) {
+    const saved = sr.saved || [];
+    const has = !!saved.length;
+    // the section header stays visible so the feature is discoverable —
+    // empty state shows a "star a search" hint instead of the list
+    els.ssEmpty.hidden = has;
+    els.ssList.hidden = els.ssLinks.hidden = !has;
+    els.searchBatch.hidden = els.searchCols.hidden = els.ssHint.hidden = !has;
+    refreshSsControls(busy);
+    if (!has) {
+      renderedSavedKey = null;
+      els.ssList.textContent = '';
+      return;
+    }
+    const counts = sr.queries || {};
+    const activeKeys = new Set(sr.activeKeys || []);
+    const key = saved.map((e) => ssKey(e) + ':' + (counts[e.query] || 0)).join('\n') +
+      '|' + busy + '|' + [...activeKeys].join(',');
+    if (key === renderedSavedKey) return;
+    renderedSavedKey = key;
+    els.ssList.textContent = '';
+    for (const e of saved) {
+      const k = ssKey(e);
+      const row = document.createElement('div');
+      row.className = 'feedItem';
+      row.classList.toggle('sel', ssSelected.has(k));
+      const isActive = sr.running && activeKeys.has(k);
+      row.classList.toggle('active', isActive);
+      const check = document.createElement('span');
+      check.className = 'check';
+      const nm = document.createElement('span');
+      nm.className = 'nm';
+      nm.textContent = e.query;
+      nm.title = e.query;
+      const cnt = document.createElement('span');
+      cnt.className = 'fcount';
+      const n = counts[e.query];
+      cnt.textContent = n ? String(n) : (isActive ? '0' : '');
+      const spin = document.createElement('span');
+      spin.className = 'spinner';
+      spin.style.display = isActive ? '' : 'none';
+      const del = document.createElement('button');
+      del.className = 'hgo del';
+      del.innerHTML = SVG_ICON.x;
+      del.title = t('unsave_search');
+      const main = document.createElement('div');
+      main.className = 'rowMain';
+      main.append(check, nm, cnt, spin, del);
+      row.appendChild(main);
+      const chips = filterChips(e.filter, e.extra);
+      if (chips.length) {
+        row.classList.add('col');
+        row.appendChild(chipsEl(chips));
+      }
+      row.addEventListener('click', () => {
+        if (ssSelected.has(k)) ssSelected.delete(k); else ssSelected.add(k);
+        saveSearchPrefs();
+        row.classList.toggle('sel', ssSelected.has(k));
+        refreshSsControls(busy);
+      });
+      del.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        await chrome.runtime.sendMessage({
+          type: 'UNSAVE_SEARCH', query: e.query, filter: e.filter, extra: e.extra,
+        });
+        refresh();
+      });
+      els.ssList.appendChild(row);
+    }
+  }
+
+  function setAllSaved(on) {
+    for (const e of savedList()) {
+      if (on) ssSelected.add(ssKey(e)); else ssSelected.delete(ssKey(e));
+    }
+    saveSearchPrefs();
+    renderedSavedKey = null; // force the row rebuild so sel classes refresh
+    if (lastState) render(lastState);
+  }
+  // all/none live inside the clickable section header — don't toggle collapse
+  els.ssSelAll.addEventListener('click', (e) => { e.stopPropagation(); setAllSaved(true); });
+  els.ssSelNone.addEventListener('click', (e) => { e.stopPropagation(); setAllSaved(false); });
+
+  // ---- collapsible search-pane sections (state survives popup reopens) ----
+  const COLL_KEY = 'tse_search_coll';
+  let collapsedSections;
+  try { collapsedSections = new Set(JSON.parse(localStorage.getItem(COLL_KEY) || '[]')); }
+  catch (_) { collapsedSections = new Set(); }
+  function bindCollapse(headEl, key) {
+    headEl.classList.toggle('closed', collapsedSections.has(key));
+    headEl.addEventListener('click', () => {
+      if (collapsedSections.has(key)) collapsedSections.delete(key); else collapsedSections.add(key);
+      try { localStorage.setItem(COLL_KEY, JSON.stringify([...collapsedSections])); } catch (_) {}
+      headEl.classList.toggle('closed', collapsedSections.has(key));
+    });
+  }
+  bindCollapse(els.ssHead, 'saved');
+  bindCollapse(els.searchHistHead, 'history');
+  bindCollapse(els.searchExpHead, 'export');
+
+  // ---- search history (rows: click fills the form, ☆ saves, ▶ re-runs) ----
   let renderedHistKey = null;
   function renderSearchHistory(sr, busy) {
     const hist = sr.history || [];
     els.searchHistHead.hidden = els.searchHistory.hidden = !hist.length;
     if (!hist.length) return;
-    // stored counts can change (grab finishing, clears) — include them in the key
+    // stored counts and saved-state can change — include them in the key
     const counts = sr.queries || {};
-    const key = hist.map((h) => h.query + '|' + (counts[h.query] || 0)).join('\n') + '|' + busy;
+    const savedKeys = new Set((sr.saved || []).map(ssKey));
+    const histKey = (h) => ssKey({ query: h.query, filter: histFilter(h), extra: h.extra });
+    const key = hist.map((h) =>
+      histKey(h) + '|' + (counts[h.query] || 0) + '|' + savedKeys.has(histKey(h))
+    ).join('\n') + '|' + busy;
     if (key === renderedHistKey) return;
     renderedHistKey = key;
     els.searchHistory.textContent = '';
     for (const h of hist) {
+      const hf = histFilter(h);
+      const isSaved = savedKeys.has(histKey(h));
       const row = document.createElement('div');
       row.className = 'histItem';
       const q = document.createElement('span');
@@ -424,19 +616,40 @@
       meta.className = 'hmeta';
       const n = counts[h.query];
       meta.textContent = n ? String(n) : '';
+      const star = document.createElement('button');
+      star.className = 'hgo star' + (isSaved ? ' on' : '');
+      star.innerHTML = SVG_ICON.star;
+      star.title = t(isSaved ? 'unsave_search' : 'save_search');
       const go = document.createElement('button');
-      go.className = 'hgo';
-      go.textContent = '▶';
+      go.className = 'hgo play';
+      go.innerHTML = SVG_ICON.play;
       go.title = t('hist_rerun');
       go.disabled = busy;
-      row.append(q, meta, go);
+      const main = document.createElement('div');
+      main.className = 'rowMain';
+      main.append(q, meta, star, go);
+      row.appendChild(main);
+      const chips = filterChips(hf, h.extra);
+      if (chips.length) {
+        row.classList.add('col');
+        row.appendChild(chipsEl(chips));
+      }
       const fill = () => {
         els.searchQuery.value = h.query;
         if (h.target) els.searchTarget.value = h.target;
-        // older entries stored a boolean `recent` instead of `filter`
-        els.searchFilter.value = h.filter || (h.recent === false ? 'top' : 'recent');
+        els.searchFilter.value = hf;
+        formExtra = h.extra || null;
+        renderExtraRow();
+        refreshSaveStar();
       };
       row.addEventListener('click', fill);
+      star.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        await chrome.runtime.sendMessage(isSaved
+          ? { type: 'UNSAVE_SEARCH', query: h.query, filter: hf, extra: h.extra }
+          : { type: 'SAVE_SEARCH', query: h.query, filter: hf, extra: h.extra, target: h.target });
+        refresh();
+      });
       go.addEventListener('click', async (e) => {
         e.stopPropagation();
         fill();
@@ -444,6 +657,38 @@
       });
       els.searchHistory.appendChild(row);
     }
+  }
+
+  // power-search filters (dates / author / tag) attached to the form's query —
+  // picked up from the open tab or a history row; shown as a removable line
+  let formExtra = null;
+  function renderExtraRow() {
+    const chips = filterChips(null, formExtra);
+    els.searchExtraRow.hidden = !chips.length;
+    els.searchExtraTxt.textContent = '';
+    if (!chips.length) return;
+    const lbl = document.createElement('span');
+    lbl.textContent = t('lbl_filters') + ':';
+    els.searchExtraTxt.append(lbl, chipsEl(chips));
+  }
+  els.searchExtraClear.addEventListener('click', () => {
+    formExtra = null;
+    renderExtraRow();
+    refreshSaveStar();
+  });
+
+  // bookmark toggle beside the query box — reflects whether the form's
+  // query+filter(+extras) is currently saved
+  function formSearch() {
+    return { query: els.searchQuery.value.trim(), filter: els.searchFilter.value, extra: formExtra };
+  }
+  function refreshSaveStar() {
+    const cur = formSearch();
+    const k = ssKey(cur);
+    const isSaved = !!cur.query && savedList().some((e) => ssKey(e) === k);
+    els.searchSave.disabled = !cur.query;
+    els.searchSave.classList.toggle('on', isSaved);
+    els.searchSave.title = t(isSaved ? 'unsave_search' : 'save_search');
   }
 
   async function refresh() {
@@ -568,13 +813,26 @@
       const query = (u.searchParams.get('q') || '').trim();
       if (!query) return null;
       const f = u.searchParams.get('filter');
-      return { query, filter: f === 'recent' || f === 'profiles' ? f : 'top' };
+      // power-search filters live in their own params — carry them along
+      const x = {};
+      for (const k of ['after_date', 'before_date', 'from_author', 'serp_type', 'tag_id']) {
+        const v = u.searchParams.get(k);
+        if (v) x[k] = v;
+      }
+      return {
+        query,
+        filter: f === 'recent' || f === 'profiles' ? f : 'top',
+        extra: Object.keys(x).length ? x : null,
+      };
     } catch (_) { return null; }
   }
 
   function applyDetectedSearch(det) {
     els.searchQuery.value = det.query;
     els.searchFilter.value = det.filter; // mirror the tab's serp tab exactly
+    formExtra = det.extra;
+    renderExtraRow();
+    refreshSaveStar();
   }
 
   async function offerDetectedSearch() {
@@ -596,7 +854,20 @@
     const target = Math.max(1, Math.min(2000, parseInt(els.searchTarget.value, 10) || 200));
     els.searchTarget.value = target;
     const r = await chrome.runtime.sendMessage({
-      type: 'START_SEARCH', query, target, filter: els.searchFilter.value,
+      type: 'START_SEARCH', query, target, filter: els.searchFilter.value, extra: formExtra,
+    });
+    if (r && !r.ok) setStatus(els.searchStatus, terr(r.error) || t('st_could_not_start'), true);
+    refresh();
+  }
+  async function startSearchBatch(type) {
+    const items = savedList().filter((e) => ssSelected.has(ssKey(e)));
+    if (!items.length) return;
+    const target = Math.max(1, Math.min(2000, parseInt(els.searchTarget.value, 10) || 200));
+    els.searchTarget.value = target;
+    const r = await chrome.runtime.sendMessage({
+      type,
+      items: items.map((e) => ({ query: e.query, filter: e.filter, extra: e.extra })),
+      target,
     });
     if (r && !r.ok) setStatus(els.searchStatus, terr(r.error) || t('st_could_not_start'), true);
     refresh();
@@ -606,12 +877,27 @@
       tse_search_prefs: {
         target: parseInt(els.searchTarget.value, 10) || 200,
         filter: els.searchFilter.value,
+        selected: [...ssSelected],
       },
     });
   }
   els.searchTarget.addEventListener('change', saveSearchPrefs);
-  els.searchFilter.addEventListener('change', saveSearchPrefs);
+  els.searchFilter.addEventListener('change', () => { saveSearchPrefs(); refreshSaveStar(); });
   els.searchStart.addEventListener('click', startSearch);
+  els.searchCols.addEventListener('click', () => startSearchBatch('START_SEARCH_COLUMNS'));
+  els.searchBatch.addEventListener('click', () => startSearchBatch('START_SEARCH_BATCH'));
+  els.searchQuery.addEventListener('input', refreshSaveStar);
+  els.searchSave.addEventListener('click', async () => {
+    const cur = formSearch();
+    if (!cur.query) return;
+    const k = ssKey(cur);
+    const isSaved = savedList().some((e) => ssKey(e) === k);
+    await chrome.runtime.sendMessage(isSaved
+      ? { type: 'UNSAVE_SEARCH', query: cur.query, filter: cur.filter, extra: cur.extra }
+      : { type: 'SAVE_SEARCH', query: cur.query, filter: cur.filter, extra: cur.extra,
+          target: parseInt(els.searchTarget.value, 10) || 200 });
+    refresh();
+  });
   els.searchQuery.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !els.searchStart.disabled) startSearch();
   });
@@ -690,6 +976,7 @@
     const sp = got.tse_search_prefs || {};
     if (sp.target) els.searchTarget.value = sp.target;
     if (sp.filter) els.searchFilter.value = sp.filter;
+    ssSelected = new Set(Array.isArray(sp.selected) ? sp.selected : []);
     const prefs = got.tse_feed_prefs || {};
     selected = new Set(prefs.selected || []);
     if (prefs.target) els.feedTarget.value = prefs.target;

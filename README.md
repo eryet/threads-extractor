@@ -37,8 +37,19 @@ no backend, no accounts, no analytics, and nothing ever leaves your machine.
   (default, paginates chronologically), **Top**, and **Profiles** (matching
   accounts — handle, name, bio, follower count — exported as their own CSV).
   Each result is tagged with the query, different queries accumulate, and
-  re-grabbing a query replaces its earlier snapshot. The popup remembers
-  your recent searches for one-click re-runs.
+  re-grabbing a query replaces its earlier snapshot. The popup keeps a
+  search history for one-click re-runs, and any search can be
+  **bookmarked** (★ next to the query box, or from the history list) into a
+  saved-searches checklist — tick the ones you want and grab them all in one
+  run: **in batch**, opened side by side as board search columns 4 at a time
+  in waves (like feeds), or **one by one** on the /search page. Each batch
+  run first sweeps leftover search columns (from interrupted runs) off the
+  board so columns never pile up, and removes its own when done. Power-search
+  filters (**After date / Before date / From profile** chips, and tag serps)
+  are detected from the open tab, shown on the form, and preserved through
+  bookmarks, history, and batch re-runs. Board columns can only express the
+  Top/Recent tabs, so account searches and power-filtered searches
+  automatically run one by one after the waves finish.
 - Every post records author, text, media URLs, like count, **reply count**,
   posted time, capture order, and — where a thread arrives as a
   conversation preview — the full `replyTo` parent.

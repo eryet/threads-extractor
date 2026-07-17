@@ -16,6 +16,9 @@
       --ok: #3ddc84;
     }
     * { box-sizing: border-box; }
+    /* display:flex on .pickHead/.row/etc. would otherwise override the UA's
+       [hidden] rule, leaving "hidden" elements visible */
+    [hidden] { display: none !important; }
     body {
       width: 320px;
       margin: 0;
@@ -200,6 +203,29 @@
     .hintClick { cursor: pointer; }
     .hintClick:hover { color: var(--text); }
 
+    /* ---- collapsible section headers (search pane) ---- */
+    .collHead { cursor: pointer; user-select: none; margin-top: 10px; }
+    .collHead .caret {
+      display: inline-block; margin-right: 6px;
+      font-size: 9px; color: var(--faint);
+      transition: transform 0.15s;
+    }
+    .collHead.closed .caret { transform: rotate(-90deg); }
+    .collHead.closed + * { display: none; }
+
+    /* ---- side-by-side labeled fields (search pane) ---- */
+    .row2 { display: flex; gap: 6px; margin: 2px 0 8px; }
+    .row2 .fld { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    .row2 .fld label { font-size: 11px; color: var(--muted); padding-left: 2px; }
+    .row2 .fld input[type="number"], .row2 .fld select {
+      margin-left: 0; width: 100%;
+      padding: 6px 9px;
+      border: 1px solid var(--border); border-radius: 9px;
+      background: var(--card); color: var(--text);
+      font-size: 12px; font-family: inherit;
+      text-align: left;
+    }
+
     /* ---- controls ---- */
     .targetRow {
       display: flex; align-items: center; gap: 8px;
@@ -243,8 +269,8 @@
     }
     .targetRow select:focus { outline: 1px solid #4a4a4a; }
 
-    /* ---- remembered searches ---- */
-    #searchHistory {
+    /* ---- search history + saved searches ---- */
+    #searchHistory, #savedSearches {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 12px;
@@ -253,8 +279,8 @@
       max-height: 160px;
       overflow-y: auto;
     }
-    #searchHistory::-webkit-scrollbar { width: 8px; }
-    #searchHistory::-webkit-scrollbar-thumb { background: #303030; border-radius: 99px; }
+    #searchHistory::-webkit-scrollbar, #savedSearches::-webkit-scrollbar { width: 8px; }
+    #searchHistory::-webkit-scrollbar-thumb, #savedSearches::-webkit-scrollbar-thumb { background: #303030; border-radius: 99px; }
     .histItem {
       display: flex; align-items: center; gap: 8px;
       padding: 6px 8px;
@@ -269,15 +295,63 @@
       font-size: 10.5px; color: var(--faint);
       font-variant-numeric: tabular-nums;
     }
-    .histItem .hgo {
+    /* small inline icon button (history ☆ / ▶, saved-search ✕) — bare SVG
+       glyph, no border box, color-coded per action for scannability */
+    .hgo {
       flex: none;
-      border: 1px solid var(--border); border-radius: 7px;
-      background: transparent; color: var(--muted);
-      font-size: 10.5px; font-family: inherit;
-      padding: 2px 7px; cursor: pointer;
+      border: 0;
+      background: transparent;
+      padding: 3px 4px; cursor: pointer;
+      line-height: 0;
     }
-    .histItem .hgo:hover { color: var(--text); border-color: #3f3f3f; }
-    .histItem .hgo:disabled { opacity: 0.4; cursor: default; }
+    .hgo svg { width: 13px; height: 13px; display: block; }
+    .hgo:disabled { opacity: 0.4; cursor: default; }
+    .hgo.star { color: var(--faint); }
+    .hgo.star:hover { color: #e3b341; }
+    .hgo.star svg path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linejoin: round; }
+    .hgo.star.on { color: #e3b341; }
+    .hgo.star.on:hover { color: #f0c964; }
+    .hgo.star.on svg path { fill: currentColor; }
+    .hgo.play { color: var(--ok); }
+    .hgo.play:hover:not(:disabled) { color: #6ee7a8; }
+    .hgo.play svg path { fill: currentColor; }
+    .hgo.del { color: var(--faint); }
+    .hgo.del:hover { color: var(--danger); }
+    .hgo.del svg path { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+    /* filter annotations: serp tab + power-search filters as a quiet second
+       text line — softly color-coded per kind, no pill chrome, so rows keep
+       the popup's typographic feel. */
+    .chips {
+      display: flex; flex-wrap: wrap; align-items: baseline;
+      column-gap: 10px; row-gap: 2px;
+    }
+    .feedItem .chips { margin-left: 26px; } /* align under the name, past the checkbox */
+    .histItem .chips { margin-left: 2px; }
+    .chip {
+      flex: none;
+      font-size: 10px; font-weight: 550; letter-spacing: 0.02em;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .chip.tab {
+      font-size: 9px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.09em;
+      color: var(--faint);
+    }
+    .chip.after  { color: #85c9a2; }
+    .chip.before { color: #d8b384; }
+    .chip.author { color: #93b4e0; }
+    .chip.tag    { color: #b7a3d6; }
+    .feedItem.col, .histItem.col { flex-direction: column; align-items: stretch; gap: 3px; }
+    .rowMain { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    /* active power-filters line under the query box */
+    #searchExtraRow { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+    #searchExtraTxt { display: contents; }
+    #searchExtraRow a {
+      color: var(--faint);
+      cursor: pointer; text-decoration: none;
+    }
+    #searchExtraRow a:hover { color: var(--danger); }
 
     .handleRow {
       display: flex; align-items: center;
@@ -522,43 +596,70 @@
     <div class="handleRow">
       <span class="at">⌕</span>
       <input type="text" id="searchQuery" data-i18n-placeholder="ph_search_terms" placeholder="search terms" autocomplete="off" spellcheck="false" />
+      <button id="btnSearchSave" class="hgo star" disabled><svg viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></button>
     </div>
     <div class="hint hintClick" id="searchDetected" hidden></div>
-    <div class="targetRow">
-      <label for="searchTarget" data-i18n="lbl_search_target">Max results</label>
-      <input type="number" id="searchTarget" min="1" max="2000" step="1" value="200" />
-    </div>
-    <div class="targetRow">
-      <label for="searchFilter" data-i18n="lbl_search_filter">Results filter</label>
-      <select id="searchFilter">
-        <option value="recent" data-i18n="filter_recent">Recent (newest first)</option>
-        <option value="top" data-i18n="filter_top">Top</option>
-        <option value="profiles" data-i18n="filter_profiles">Profiles (accounts)</option>
-      </select>
+    <div class="hint" id="searchExtraRow" hidden><span id="searchExtraTxt"></span><a id="searchExtraClear">✕</a></div>
+    <div class="row2">
+      <div class="fld">
+        <label for="searchTarget" data-i18n="lbl_search_target">Max results</label>
+        <input type="number" id="searchTarget" min="1" max="2000" step="1" value="200" />
+      </div>
+      <div class="fld">
+        <label for="searchFilter" data-i18n="lbl_search_filter">Results filter</label>
+        <select id="searchFilter">
+          <option value="recent" data-i18n="filter_recent">Recent (newest first)</option>
+          <option value="top" data-i18n="filter_top">Top</option>
+          <option value="profiles" data-i18n="filter_profiles">Profiles (accounts)</option>
+        </select>
+      </div>
     </div>
 
     <button id="btnSearchStart" class="act primary" data-i18n="btn_grab_search">Grab search results</button>
-    <button id="btnSearchStop" class="act stop" data-i18n="btn_stop" disabled>Stop</button>
-    <div class="hint" data-i18n="hint_search">runs the search in your Threads tab and captures results while it scrolls · re-grabbing a query replaces its earlier snapshot · keep the tab visible</div>
+    <button id="btnSearchStop" class="act stop" data-i18n="btn_stop" hidden>Stop</button>
+    <div class="hint" data-i18n="hint_search">runs the search in your Threads tab while it scrolls · keep the tab visible</div>
 
-    <div class="pickHead" id="searchHistHead" hidden>
-      <span class="t" data-i18n="pick_search_history">Remembered searches</span>
+    <div class="pickHead collHead" id="ssHead">
+      <span class="caret">▾</span>
+      <span class="t" data-i18n="pick_saved_searches">Saved searches</span>
+      <span class="selcount" id="ssSelCount"></span>
+      <span class="links" id="ssLinks" hidden>
+        <a id="ssSelAll" data-i18n="link_all">all</a><span class="sepDot">·</span><a id="ssSelNone" data-i18n="link_none">none</a>
+      </span>
+    </div>
+    <div id="ssBody">
+      <div id="savedSearches" hidden></div>
+      <div class="hint" id="ssEmpty" data-i18n="hint_save_empty">star ☆ a search to keep it here for batch grabs</div>
+      <button id="btnSearchCols" class="act primary" data-i18n="btn_batch" hidden>Grab in batch · 4 at a time</button>
+      <button id="btnSearchBatch" class="act" data-i18n="btn_onebyone" hidden>Grab one by one</button>
+      <div class="hint" id="ssHint" data-i18n="hint_search_batch" hidden>batch opens checked searches as board columns, 4 at a time (clearing leftover search columns first) · account &amp; filtered searches run one by one after · each replaces its earlier snapshot</div>
+    </div>
+
+    <div class="pickHead collHead" id="searchHistHead" hidden>
+      <span class="caret">▾</span>
+      <span class="t" data-i18n="pick_search_history">History</span>
     </div>
     <div id="searchHistory" hidden></div>
 
-    <div class="exportHead" data-i18n="head_export_posts">Export posts</div>
-    <div class="row">
-      <button id="btnSearchJson" class="act" disabled>JSON</button>
-      <button id="btnSearchCsv" class="act" disabled>CSV</button>
-      <button id="btnSearchMd" class="act" disabled>MD</button>
+    <div class="pickHead collHead" id="searchExpHead">
+      <span class="caret">▾</span>
+      <span class="t" data-i18n="head_export">Export</span>
     </div>
-    <div class="exportHead" id="searchAccHead" data-i18n="head_export_accounts" hidden>Export accounts</div>
-    <div class="row" id="searchAccRow" hidden>
-      <button id="btnSearchAccJson" class="act">JSON</button>
-      <button id="btnSearchAccCsv" class="act">CSV</button>
-      <button id="btnSearchAccMd" class="act">MD</button>
+    <div id="searchExpBody">
+      <div class="exportHead" data-i18n="head_export_posts">Export posts</div>
+      <div class="row">
+        <button id="btnSearchJson" class="act" disabled>JSON</button>
+        <button id="btnSearchCsv" class="act" disabled>CSV</button>
+        <button id="btnSearchMd" class="act" disabled>MD</button>
+      </div>
+      <div class="exportHead" id="searchAccHead" data-i18n="head_export_accounts" hidden>Export accounts</div>
+      <div class="row" id="searchAccRow" hidden>
+        <button id="btnSearchAccJson" class="act">JSON</button>
+        <button id="btnSearchAccCsv" class="act">CSV</button>
+        <button id="btnSearchAccMd" class="act">MD</button>
+      </div>
+      <button id="btnSearchClear" class="act ghost" data-i18n="btn_clear_search" disabled>Clear search data</button>
     </div>
-    <button id="btnSearchClear" class="act ghost" data-i18n="btn_clear_search" disabled>Clear search data</button>
   </div>
 
   <div class="storeRow" id="storeRow" hidden>

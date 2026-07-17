@@ -27,10 +27,12 @@
   // column renders a skeleton first and Threads replaces its scroller element
   // when the content hydrates, so cached nodes go stale. Column order is
   // stable during a run (new columns append at the end).
-  let cols = null;        // columns mode: [{idx, url, idle, lastH, done}]
+  // A column spec is {kind:'feed', name, url} or {kind:'search', query, filter};
+  // bound columns carry key = url (feed) / query (search) for attribution.
+  let cols = null;        // columns mode: [{idx, kind, key, idle, lastH, done}]
   let columnUris = null;  // board column registry from inject.js (DOM order)
-  let desiredFeeds = [];  // columns mode: [{name, url}] the run wants
-  let addedCols = [];     // columns this run added itself: [{url, idx}]
+  let desiredCols = [];   // columns mode: specs the run wants
+  let addedCols = [];     // columns this run added itself: [{idx}]
 
   const IDLE_LIMIT = 8;   // ~8 quiet cycles (≈10s) => assume exhausted
   const STEP_MS_MIN = 900;
@@ -183,17 +185,21 @@
     };
     if (msg.kind === 'feed') msg.feedName = currentFeedName();
     send(msg).then((resp) => {
-      // columns mode: the service worker reports which feeds hit their target
-      if (mode === 'columns' && cols && resp && Array.isArray(resp.doneFeeds)) {
-        for (const c of cols) if (resp.doneFeeds.includes(c.url)) c.done = true;
+      // columns mode: the service worker reports which columns hit their target
+      const done = resp && (resp.doneKeys || resp.doneFeeds);
+      if (mode === 'columns' && cols && Array.isArray(done)) {
+        for (const c of cols) if (done.includes(c.key)) c.done = true;
       }
     });
     if (!scrolling) return;
     if (mode === 'columns') {
-      if (msg.kind !== 'feed' || !cols || !msg.feedUrl) return;
-      const url = msg.feedUrl.replace(/\/+$/, '') + '/';
+      if (!cols) return;
+      let kind = null, key = null;
+      if (msg.kind === 'feed' && msg.feedUrl) { kind = 'feed'; key = msg.feedUrl.replace(/\/+$/, '') + '/'; }
+      else if (msg.kind === 'search' && msg.searchQuery) { kind = 'search'; key = msg.searchQuery; }
+      if (!key) return;
       for (const c of cols) {
-        if (c.url !== url) continue;
+        if (c.kind !== kind || c.key !== key) continue;
         c.idle = 0;
         if (d.pageInfo && d.pageInfo.has_next_page === false) c.done = true;
       }
@@ -294,23 +300,218 @@
     return grown ? colScrollers().length - 1 : -1;
   }
 
-  // remove a column this run added: its header "More" -> "Remove column"
-  async function removeColumn(el) {
-    if (!el || !document.contains(el)) return;
+  // drive: "Add a column" -> Search -> type the query -> click the
+  // "Search <query>" typeahead option (which pins a serp column), then
+  // optionally switch it to its Recent tab (verified live 2026-07-17).
+  // Resolves to the new column's INDEX among the scrollers, or -1. The pane's
+  // index is pushed to addedCols as soon as it exists, so a failed bind still
+  // gets a teardown attempt.
+  async function addSearchColumn(query, filter) {
+    const addBtn = buttonByText('Add a column');
+    if (!addBtn) return -1;
+    fireClick(addBtn);
+    if (!(await waitFor(() => document.querySelector('[role="menu"]'), 3000))) return -1;
+    const searchItem = await waitFor(
+      () => menuItems().find((b) => (b.textContent || '').trim() === 'Search'), 2000);
+    if (!searchItem) { closeMenus(); return -1; }
+    const visInputs = () => [...document.querySelectorAll('input[placeholder="Search"]')]
+      .filter((i) => i.offsetParent);
+    const before = colScrollers().length;
+    const inputsBefore = visInputs().length;
+    fireClick(searchItem);
+    const grown = await waitFor(() => colScrollers().length > before, 5000);
+    closeMenus();
+    if (!grown) return -1;
+    const idx = colScrollers().length - 1;
+    addedCols.push({ idx });
+    // The new pane appends at the end, so it owns the LAST header search box —
+    // but only once ITS box has mounted (before that, the last box belongs to
+    // the previous column). Threads PRE-FILLS the box with the session's
+    // previous search, so never look for an empty one — clear it, then type
+    // (the typeahead only opens on a value change). Re-resolve the element
+    // around waits: hydration replaces it.
+    const lastInput = () => {
+      const els = visInputs();
+      return els.length > inputsBefore ? els[els.length - 1] : null;
+    };
+    let input = await waitFor(lastInput, 4000);
+    if (!input) return -1;
+    input.scrollIntoView({ inline: 'nearest' });
+    // React-controlled input: go through the native setter + input event.
+    // Clearing the prefill makes React re-render — sometimes REMOUNTING the
+    // box, which detaches the element and resets the value — so type with
+    // verification: re-resolve, set, and confirm the query actually stuck.
+    const setVal = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
+    input.focus();
+    setVal.call(input, '');
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    await sleep(350);
+    let typed = null;
+    for (let attempt = 0; attempt < 4 && !typed; attempt++) {
+      const inp = lastInput();
+      if (!inp) { await sleep(400); continue; }
+      inp.focus();
+      setVal.call(inp, query);
+      inp.dispatchEvent(new Event('input', { bubbles: true }));
+      await sleep(450);
+      const cur = lastInput();
+      if (cur && cur.value === query) typed = cur;
+    }
+    if (!typed) return -1;
+    // the "Search <query>" typeahead option converts the pane to a serp column
+    const compact = ('Search' + query + 'Continue').replace(/\s+/g, '');
+    const findRow = () =>
+      [...document.querySelectorAll('li[role="option"]')].find((el) =>
+        el.offsetParent && (el.textContent || '').replace(/\s+/g, '') === compact) || null;
+    let row = await waitFor(findRow, 5000);
+    if (!row) {
+      // value stuck but the dropdown never opened — nudge it once
+      typed.focus();
+      typed.dispatchEvent(new Event('input', { bubbles: true }));
+      row = await waitFor(findRow, 3000);
+    }
+    if (!row) { fireClick(document.body); return -1; }
+    fireClick(row.querySelector('a') || row);
+    await sleep(1200);
+    if (filter === 'recent') await clickColumnRecentTab(query);
+    return idx;
+  }
+
+  // the serp column's Recent tab sits just under its header search box —
+  // re-resolve the box by its query value (conversion can remount the header)
+  async function clickColumnRecentTab(query) {
+    const tab = await waitFor(() => {
+      const inputs = [...document.querySelectorAll('input[placeholder="Search"]')]
+        .filter((i) => i.offsetParent && i.value === query);
+      const input = inputs.length ? inputs[inputs.length - 1] : null;
+      if (!input) return null;
+      const ir = input.getBoundingClientRect();
+      return [...document.querySelectorAll('a, [role="tab"]')].find((el) => {
+        if (!el.offsetParent || (el.textContent || '').trim() !== 'Recent') return false;
+        const r = el.getBoundingClientRect();
+        return r.y > ir.bottom && r.y < ir.bottom + 120 &&
+          r.x > ir.left - 80 && r.x < ir.right + 80;
+      }) || null;
+    }, 4000);
+    if (tab) { fireClick(tab); await sleep(800); }
+  }
+
+  // A control in the same header ROW as a search column's box, kept inside
+  // the column's x-range so a neighbour's buttons can't match. Returns the
+  // node to CLICK — the labelled svg itself when there is one, so the
+  // synthetic events bubble up THROUGH the interactive wrapper (dispatching
+  // on an outer element can start above the handler and miss it).
+  function headerRowButton(colEl, input, label) {
+    const cr = colEl.getBoundingClientRect();
+    const ir = input.getBoundingClientRect();
+    const iy = ir.y + ir.height / 2;
+    const inRow = (r) => {
+      const cx = r.x + r.width / 2;
+      return r.width > 0 && Math.abs((r.y + r.height / 2) - iy) < 25 &&
+        cx >= cr.x && cx <= cr.x + cr.width;
+    };
+    const svg = [...document.querySelectorAll(`svg[aria-label="${label}"]`)]
+      .find((s) => inRow(s.getBoundingClientRect()));
+    if (svg) return svg;
+    return [...document.querySelectorAll('[role="button"], button')].find((b) => {
+      const r = b.getBoundingClientRect();
+      return inRow(r) && r.width < 80 &&
+        ((b.textContent || '').trim() === label || b.getAttribute('aria-label') === label);
+    }) || null;
+  }
+
+  // feed columns keep the original header rule (their scroller starts below
+  // the header, and they have no search box to anchor on)
+  function feedHeaderMore(el) {
     const bodyRect = el.getBoundingClientRect();
-    const more = [...document.querySelectorAll('[role="button"], button')].find((b) => {
+    return [...document.querySelectorAll('[role="button"], button')].find((b) => {
       const r = b.getBoundingClientRect();
       return r.width > 0 && r.y < bodyRect.y &&
         r.x >= bodyRect.x - 10 && r.x <= bodyRect.x + bodyRect.width &&
         (b.textContent || '').trim() === 'More';
-    });
+    }) || null;
+  }
+
+  const removeItem = () =>
+    menuItems().find((b) => /Remove column/.test((b.textContent || '').trim()));
+
+  // Remove a column by INDEX (elements go stale as column state changes).
+  // Search columns only offer "Remove column" from their BASE state — on a
+  // serp their ⋯ menu is just "Add as column / Create new feed" — so walk the
+  // column's ← Back first; a still-transient pane gets PINNED via "Add as
+  // column" so the Remove entry appears. Feed columns skip all of that.
+  async function removeColumn(idx) {
+    for (let i = 0; i < 4; i++) {
+      const el = colScrollers()[idx];
+      if (!el) return;
+      const input = columnSearchInput(el);
+      if (!input) break; // feed column — no back walk
+      const back = headerRowButton(el, input, 'Back');
+      if (!back) break;
+      fireClick(back);
+      await sleep(900);
+    }
+    const el = colScrollers()[idx];
+    if (!el) return;
+    const input = columnSearchInput(el);
+    const more = input ? headerRowButton(el, input, 'More') : feedHeaderMore(el);
     if (!more) return;
     fireClick(more);
-    const item = await waitFor(
-      () => menuItems().find((b) => /Remove column/.test((b.textContent || '').trim())), 3000);
+    let item = await waitFor(removeItem, 2500);
+    if (!item && input) {
+      // transient search pane: pin it first, then Remove column appears
+      const addAs = menuItems().find((b) => /Add as column/.test((b.textContent || '').trim()));
+      if (!addAs) { closeMenus(); return; }
+      fireClick(addAs);
+      await sleep(1500);
+      const el2 = colScrollers()[idx];
+      const input2 = el2 && columnSearchInput(el2);
+      const more2 = el2 && input2 && headerRowButton(el2, input2, 'More');
+      if (!more2) return;
+      fireClick(more2);
+      item = await waitFor(removeItem, 2500);
+    }
     if (!item) { closeMenus(); return; }
     fireClick(item);
     await sleep(1000);
+  }
+
+  // The visible header search box owning a column: its center-x falls within
+  // the column's x-range. No y comparison — the scroller's rect sometimes
+  // spans the whole column INCLUDING the header, so "above the scroller top"
+  // is not a reliable test.
+  function columnSearchInput(el) {
+    const r = el.getBoundingClientRect();
+    if (!r.width) return null;
+    return [...document.querySelectorAll('input[placeholder="Search"]')].find((i) => {
+      if (!i.offsetParent) return false;
+      const ir = i.getBoundingClientRect();
+      const cx = ir.x + ir.width / 2;
+      return cx >= r.x && cx <= r.x + r.width;
+    }) || null;
+  }
+
+  // board columns whose header carries a search box = search columns
+  function searchColumnScrollers() {
+    return colScrollers().filter((el) => columnSearchInput(el));
+  }
+
+  // Leftover search columns (interrupted earlier runs) pile up board render
+  // load — sweep the board back to its base state before opening this run's
+  // own columns. Feed columns are never touched. An unremovable pane is
+  // skipped so it can't block the ones behind it.
+  async function removeStaleSearchColumns() {
+    let skip = 0;
+    for (let guard = 0; guard < 12; guard++) {
+      const stale = searchColumnScrollers(); // re-resolve — removal shifts the rest
+      if (stale.length <= skip) return;
+      const el = stale[skip];
+      el.scrollIntoView({ inline: 'center' });
+      await sleep(400);
+      const before = colScrollers().length;
+      await removeColumn(colScrollers().indexOf(el));
+      if (colScrollers().length >= before) skip++;
+    }
   }
 
   let removingCols = null; // shared so a wave hand-off can await an in-flight removal
@@ -321,7 +522,7 @@
         addedCols = [];
         // highest index first, so earlier removals don't shift later ones
         toRemove.sort((a, b) => b.idx - a.idx);
-        for (const c of toRemove) await removeColumn(colScrollers()[c.idx]);
+        for (const c of toRemove) await removeColumn(c.idx);
       })().finally(() => { removingCols = null; });
     }
     return removingCols;
@@ -334,24 +535,42 @@
     await sleep(700);
     if (!scrolling || mode !== 'columns') return;
 
-    const desired = desiredFeeds.slice(0, MAX_COLUMNS);
+    const desired = desiredCols.slice(0, MAX_COLUMNS);
+    // Search runs: clear leftover search columns from earlier interrupted runs
+    // so the board starts from its base state. Safe here because search runs
+    // never bind via the uri registry (whose indices removal would shift).
+    if (desired.some((s) => s.kind === 'search')) {
+      await removeStaleSearchColumns();
+      if (!scrolling || mode !== 'columns') return;
+    }
     // columns already pinned, by registry order (uris align with the DOM)
     const uris = (columnUris || []).map((u) => (typeof u === 'string' ? u.replace(/\/+$/, '') + '/' : null));
     const bound = [];
-    for (const f of desired) {
+    for (const spec of desired) {
       if (!scrolling || mode !== 'columns') return;
-      let idx = uris.indexOf(f.url);
-      if (idx === -1) {
-        idx = await addFeedColumn(f.name); // not pinned — open it ourselves
-        if (idx !== -1) addedCols.push({ url: f.url, idx });
+      if (spec.kind === 'search') {
+        // search columns are always opened by the run (a user's pinned search
+        // column has its own query — never hijack it); addSearchColumn tracks
+        // the pane in addedCols itself, even when the bind fails
+        const idx = await addSearchColumn(spec.query, spec.filter);
+        if (idx !== -1) {
+          bound.push({ idx, kind: 'search', key: spec.query, idle: 0, lastH: 0, done: false });
+        }
+        continue;
       }
-      if (idx !== -1) bound.push({ idx, url: f.url, idle: 0, lastH: 0, done: false });
+      let idx = uris.indexOf(spec.url);
+      if (idx === -1) {
+        idx = await addFeedColumn(spec.name); // not pinned — open it ourselves
+        if (idx !== -1) addedCols.push({ idx });
+      }
+      if (idx !== -1) bound.push({ idx, kind: 'feed', key: spec.url, idle: 0, lastH: 0, done: false });
     }
     cols = bound;
-    if (!cols.length) return stopScroll('could not open any feed columns');
+    if (!cols.length) return stopScroll('could not open any columns');
     send({
       type: 'COLUMNS_INFO',
-      feeds: cols.map((c) => ({ url: c.url })),
+      feeds: cols.filter((c) => c.kind === 'feed').map((c) => ({ url: c.key })),
+      cols: cols.map((c) => (c.kind === 'search' ? { kind: 'search', query: c.key } : { kind: 'feed', url: c.key })),
     }).then((resp) => {
       if (resp === null) return stopScroll('extension unreachable');
       if (!scrolling || mode !== 'columns') return;
@@ -413,7 +632,16 @@
     timer = setTimeout(step, STEP_MS_MIN + Math.random() * (STEP_MS_MAX - STEP_MS_MIN));
   }
 
-  function startScroll(m, feeds) {
+  // column specs arrive as msg.cols (mixed kinds) or legacy msg.feeds
+  function normalizeSpecs(msg) {
+    if (Array.isArray(msg.cols)) return msg.cols;
+    if (Array.isArray(msg.feeds)) {
+      return msg.feeds.map((f) => ({ kind: 'feed', name: f.name, url: f.url }));
+    }
+    return [];
+  }
+
+  function startScroll(m, specs) {
     if (scrolling && mode === m) return;
     if (scrolling) { // switching modes: kill the old loop first
       scrolling = false;
@@ -421,7 +649,7 @@
       cols = null;
     }
     mode = m;
-    if (m === 'columns') desiredFeeds = Array.isArray(feeds) ? feeds : [];
+    if (m === 'columns') desiredCols = Array.isArray(specs) ? specs : [];
     const expected = m === 'columns' ? 'board' : m;
     if (pageKind() !== expected) {
       if (m === 'saved' || m === 'liked') {
@@ -453,11 +681,11 @@
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === 'START_SCROLL') {
-      startScroll(msg.mode || 'saved', msg.feeds);
+      startScroll(msg.mode || 'saved', normalizeSpecs(msg));
       sendResponse({ ok: true, pageKind: pageKind() });
     } else if (msg.type === 'NEXT_WAVE') {
       // batch waves: close this wave's columns, then open the next set of
-      // feeds on the same board — no page navigation between waves
+      // feeds/searches on the same board — no page navigation between waves
       (async () => {
         scrolling = false;
         if (timer) clearTimeout(timer);
@@ -465,9 +693,23 @@
         cols = null;
         await removeAddedColumns(); // waits for an in-flight teardown too
         await sleep(600);           // let the board settle before re-binding
-        startScroll('columns', msg.feeds);
+        startScroll('columns', normalizeSpecs(msg));
       })();
       sendResponse({ ok: true });
+    } else if (msg.type === 'TEARDOWN_COLUMNS') {
+      // remove the columns this run added, and only THEN respond — the
+      // service worker navigates away right after, which would cut an
+      // async removal short
+      (async () => {
+        scrolling = false;
+        if (timer) clearTimeout(timer);
+        timer = null;
+        cols = null;
+        hideBanner();
+        await removeAddedColumns();
+        sendResponse({ ok: true });
+      })();
+      return true; // async sendResponse
     } else if (msg.type === 'STOP_SCROLL') {
       scrolling = false;
       if (timer) clearTimeout(timer);
