@@ -19,6 +19,10 @@
   // ---- scroll driver state ----
   let scrolling = false;
   let mode = null;        // 'saved' | 'feed' | 'profile' | 'columns' while scrolling
+  // Which run owns this tab, in the service worker's STOP taxonomy. 'columns'
+  // is ambiguous there (both feed and search runs use it), so the worker states
+  // it on START_SCROLL. It outlives NEXT_WAVE, which never changes run type.
+  let stopMode = 'saved';
   let idleCycles = 0;     // cycles with no new batch AND no height growth
   let lastHeight = 0;
   let sawEnd = false;     // a captured page_info said has_next_page === false
@@ -91,6 +95,7 @@
   }
 
   function sendState(state, reason) {
+    touchShield(); // every state ping is a sign of life for the shield watchdog
     send({ type: 'SCROLL_STATE', mode, state, reason });
   }
 
@@ -102,6 +107,7 @@
 
   function showBanner(m) {
     const label = TSEI18n.t(BANNER_KEYS[m] || 'banner_generic');
+    showShield();
     if (banner) {
       banner.lastChild.textContent = bannerText(label);
       return;
@@ -141,6 +147,105 @@
   function hideBanner() {
     if (banner) banner.remove();
     banner = null;
+    hideShield();
+  }
+
+  // ---- input shield: the grab writes scrollTop on the board's scrollers every
+  // ~1s, so any real scroll the user lands there is yanked back on the next
+  // tick — the board feels frozen. Rather than arbitrate, lock real input out
+  // for the duration. Programmatic scrolling and the synthesized pointer events
+  // used to open/close columns are unaffected: both bypass hit-testing.
+  let shield = null;
+  let shieldAlive = 0;    // last sign of life from the run
+  let shieldWatch = null;
+  // Backstop only. The service worker's own 60s stall watchdog (sw.js STALL_MS)
+  // normally ends a wedged run long before this fires; this covers the case
+  // where the worker itself is gone and nothing else would ever un-lock the tab.
+  const SHIELD_MAX_IDLE_MS = 90000;
+
+  function touchShield() { shieldAlive = Date.now(); }
+
+  function showShield() {
+    touchShield();
+    if (shield) return;
+    shield = document.createElement('div');
+    shield.id = 'tse-shield';
+    shield.style.cssText = [
+      'position:fixed', 'inset:0', 'z-index:2147483646',
+      'display:flex', 'align-items:flex-end', 'justify-content:center',
+      'padding-bottom:38px', 'background:rgba(0,0,0,0.34)',
+      'backdrop-filter:saturate(0.75)', 'overscroll-behavior:contain',
+      'cursor:not-allowed', 'font:14px/1.4 system-ui,sans-serif',
+    ].join(';');
+    const stopBtn = document.createElement('button');
+    // swallow everything that could reach the board underneath
+    for (const type of ['wheel', 'pointerdown', 'mousedown', 'click', 'touchstart']) {
+      shield.addEventListener(type, (e) => {
+        if (e.target !== stopBtn) { e.preventDefault(); e.stopPropagation(); }
+      }, { passive: false });
+    }
+
+    const card = document.createElement('div');
+    card.style.cssText = [
+      'display:flex', 'align-items:center', 'gap:16px',
+      'padding:14px 18px', 'border-radius:14px', 'max-width:92vw',
+      'background:rgba(8,8,8,0.96)', 'border:1.5px solid rgba(61,220,132,0.5)',
+      'box-shadow:0 6px 32px rgba(0,0,0,0.7)', 'cursor:default',
+    ].join(';');
+
+    const copy = document.createElement('div');
+    const title = document.createElement('div');
+    title.textContent = TSEI18n.t('shield_locked');
+    title.style.cssText = 'color:#f3f3f3;font-weight:700;';
+    const hint = document.createElement('div');
+    hint.textContent = TSEI18n.t('shield_hint');
+    hint.style.cssText = 'color:#9a9a9a;font-size:12.5px;margin-top:3px;';
+    copy.append(title, hint);
+
+    stopBtn.type = 'button';
+    stopBtn.textContent = TSEI18n.t('shield_stop');
+    stopBtn.style.cssText = [
+      'flex:none', 'padding:9px 16px', 'border-radius:10px', 'cursor:pointer',
+      'background:#3ddc84', 'color:#062', 'border:0', 'font:inherit', 'font-weight:700',
+    ].join(';');
+    stopBtn.addEventListener('click', (e) => { e.stopPropagation(); requestStop(); });
+
+    card.append(copy, stopBtn);
+    shield.append(card);
+    document.documentElement.appendChild(shield);
+
+    document.addEventListener('keydown', shieldKeys, true);
+    // Deliberately keyed off the banner, not `scrolling`: NEXT_WAVE drops
+    // `scrolling` for a beat between waves while the run still owns the tab,
+    // and unlocking the board in that gap is the very bug this prevents.
+    shieldWatch = setInterval(() => {
+      if (!banner || Date.now() - shieldAlive > SHIELD_MAX_IDLE_MS) hideShield();
+    }, 2000);
+  }
+
+  function shieldKeys(e) {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); requestStop(); }
+  }
+
+  function hideShield() {
+    if (shieldWatch) clearInterval(shieldWatch);
+    shieldWatch = null;
+    document.removeEventListener('keydown', shieldKeys, true);
+    if (shield) shield.remove();
+    shield = null;
+  }
+
+  // Esc / the shield's button end the whole run, not just this tab's loop —
+  // otherwise the service worker would just navigate on and restart it.
+  let stopping = false;
+  function requestStop() {
+    if (stopping) return;
+    stopping = true;
+    const btn = shield && shield.querySelector('button');
+    if (btn) { btn.textContent = TSEI18n.t('shield_stopping'); btn.disabled = true; btn.style.opacity = '0.6'; }
+    send({ type: 'STOP', mode: stopMode });
+    // the worker answers with STOP_SCROLL/TEARDOWN_COLUMNS, which unlocks the
+    // tab; if it never does, the watchdog above still frees it
   }
 
   // ---- engager fetch bridge (dashboard -> SW -> here -> inject.js -> back) ----
@@ -227,7 +332,9 @@
   // unpin them afterwards. UI strings ("Add a column", "Feeds", "More",
   // "Remove column") assume the English Threads UI.
 
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  // every awaited beat of a run is a sign of life, which keeps the shield up
+  // through long column setup — that phase sends no state pings of its own
+  const sleep = (ms) => new Promise((r) => setTimeout(() => { touchShield(); r(); }, ms));
 
   function fireEvents(el, types) {
     const r = el.getBoundingClientRect();
@@ -665,6 +772,7 @@
     sawEnd = false;
     idleCycles = 0;
     lastHeight = 0;
+    stopping = false;
     showBanner(m);
     if (m === 'columns') {
       sendState('running');
@@ -681,6 +789,7 @@
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === 'START_SCROLL') {
+      if (msg.stopMode) stopMode = msg.stopMode;
       startScroll(msg.mode || 'saved', normalizeSpecs(msg));
       sendResponse({ ok: true, pageKind: pageKind() });
     } else if (msg.type === 'NEXT_WAVE') {

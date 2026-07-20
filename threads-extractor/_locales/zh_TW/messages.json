@@ -756,7 +756,19 @@
     "message": "擷取中"
   },
   "banner_tail": {
-    "message": "{label} — 請勿操作此分頁並保持可見 · 隨時可從擴充功能視窗停止"
+    "message": "{label} — 擷取期間此分頁已鎖定，請保持可見"
+  },
+  "shield_locked": {
+    "message": "擷取期間看板已鎖定"
+  },
+  "shield_hint": {
+    "message": "在此捲動會與擷取衝突，因此在完成前暫時封鎖操作。"
+  },
+  "shield_stop": {
+    "message": "停止擷取"
+  },
+  "shield_stopping": {
+    "message": "停止中…"
   },
   "storage_used": {
     "message": "儲存空間：{used} / {quota} MB"

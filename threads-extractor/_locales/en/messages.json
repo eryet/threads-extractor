@@ -756,7 +756,19 @@
     "message": "grabbing"
   },
   "banner_tail": {
-    "message": "{label} — don't use this tab, keep it visible · stop anytime from the extension popup"
+    "message": "{label} — this tab is locked while grabbing, keep it visible"
+  },
+  "shield_locked": {
+    "message": "Board locked while grabbing"
+  },
+  "shield_hint": {
+    "message": "Scrolling here would fight the grab, so input is blocked until it finishes."
+  },
+  "shield_stop": {
+    "message": "Stop grabbing"
+  },
+  "shield_stopping": {
+    "message": "Stopping…"
   },
   "storage_used": {
     "message": "Storage: {used} / {quota} MB"

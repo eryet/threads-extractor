@@ -940,7 +940,7 @@ async function handleContentReady(msg, sender) {
         touchProgress(st);
         await persist();
         chrome.tabs.sendMessage(tabId, {
-          type: 'START_SCROLL', mode: 'columns', feeds: st.queue,
+          type: 'START_SCROLL', mode: 'columns', stopMode: 'feed', feeds: st.queue,
         }).catch(() => {});
       }
       return;
@@ -950,7 +950,7 @@ async function handleContentReady(msg, sender) {
       st.awaitingNav = false;
       touchProgress(st);
       await persist();
-      chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'feed' }).catch(() => {});
+      chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'feed', stopMode: 'feed' }).catch(() => {});
     }
     return;
   }
@@ -960,7 +960,7 @@ async function handleContentReady(msg, sender) {
       ps.awaitingNav = false;
       touchProgress(ps);
       await persist();
-      chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'profile' }).catch(() => {});
+      chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'profile', stopMode: 'profile' }).catch(() => {});
     }
     return;
   }
@@ -975,7 +975,7 @@ async function handleContentReady(msg, sender) {
         touchProgress(ss);
         await persist();
         chrome.tabs.sendMessage(tabId, {
-          type: 'START_SCROLL', mode: 'columns', cols: searchColSpecs(ss.queue),
+          type: 'START_SCROLL', mode: 'columns', stopMode: 'search', cols: searchColSpecs(ss.queue),
         }).catch(() => {});
       }
       return;
@@ -984,16 +984,16 @@ async function handleContentReady(msg, sender) {
       ss.awaitingNav = false;
       touchProgress(ss);
       await persist();
-      chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'search' }).catch(() => {});
+      chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'search', stopMode: 'search' }).catch(() => {});
     }
     return;
   }
   // saved/liked grab resume after the /saved or /liked navigation
   if (store.state.grabbing && msg.kind === 'saved') {
-    chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'saved' }).catch(() => {});
+    chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'saved', stopMode: 'saved' }).catch(() => {});
   }
   if (store.likedState.grabbing && msg.kind === 'liked') {
-    chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'liked' }).catch(() => {});
+    chrome.tabs.sendMessage(tabId, { type: 'START_SCROLL', mode: 'liked', stopMode: 'liked' }).catch(() => {});
   }
 }
 
@@ -1238,7 +1238,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         store.searchState.running = false;
         await persist();
         try {
-          await chrome.tabs.sendMessage(tab.id, { type: 'START_SCROLL', mode: liked ? 'liked' : 'saved' });
+          await chrome.tabs.sendMessage(tab.id, { type: 'START_SCROLL', mode: liked ? 'liked' : 'saved', stopMode: liked ? 'liked' : 'saved' });
           sendResponse({ ok: true });
         } catch (e) {
           st.grabbing = false;
@@ -1327,7 +1327,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           await persist();
           try {
             await chrome.tabs.sendMessage(tab.id, {
-              type: 'START_SCROLL', mode: 'columns', feeds: store.feedState.queue,
+              type: 'START_SCROLL', mode: 'columns', stopMode: 'feed', feeds: store.feedState.queue,
             });
           } catch (e) {
             store.feedState.running = false;
@@ -1632,7 +1632,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
           await persist();
           try {
             await chrome.tabs.sendMessage(tab.id, {
-              type: 'START_SCROLL', mode: 'columns', cols: searchColSpecs(store.searchState.queue),
+              type: 'START_SCROLL', mode: 'columns', stopMode: 'search', cols: searchColSpecs(store.searchState.queue),
             });
           } catch (e) {
             store.searchState.running = false;
